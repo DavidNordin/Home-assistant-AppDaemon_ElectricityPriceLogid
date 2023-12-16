@@ -1,0 +1,52 @@
+import hassapi as hass
+import csv
+from datetime import datetime
+
+class hvacControl(hass.Hass):
+    def initialize(self):
+        # Listen for state changes on the 'tomorrow_valid' attribute of the 'nordpool' sensor
+        self.listen_state(self.calculate_adjustment, "sensor.nordpool", attribute="tomorrow_valid")
+
+        # Call the calculate_adjustment method on startup
+        self.calculate_adjustment()
+
+    def calculate_adjustment(self, entity=None, attribute=None, old=None, new=None, kwargs=None):
+        # Only proceed if 'tomorrow_valid' has changed to 'true' or if the method was called without parameters (on startup)
+        if new is not None and new != "true":
+            return
+
+        # Get the current event from the calendar
+        current_event = self.get_state("calendar.hourly_weighed_range")
+
+        # Extract the price and range from the event message
+        price, range = current_event.split(", ")
+        current_price = float(price.split(": ")[1])
+        current_range = range.split(": ")[1]
+
+        # Retrieve the attributes of the 'sensor.weighed_price_range' sensor
+        lowest_range = float(self.get_state("sensor.weighed_price_range", attribute="lowest range"))
+        lower_middle_range = float(self.get_state("sensor.weighed_price_range", attribute="lower-middle range"))
+        upper_middle_range = float(self.get_state("sensor.weighed_price_range", attribute="upper-middle range"))
+        highest_range = float(self.get_state("sensor.weighed_price_range", attribute="highest range"))
+
+        # Determine the current range and calculate the adjustment percentage
+        if current_range == 'lowest range':
+            adjustment_percentage = 100 - ((current_price - lowest_range) / (lower_middle_range - lowest_range)) * 100
+        elif current_range == 'lower-middle range':
+            adjustment_percentage = ((current_price - lower_middle_range) / (upper_middle_range - lower_middle_range)) * 100
+        elif current_range == 'upper-middle range':
+            adjustment_percentage = -100
+        elif current_range == 'highest range':
+            adjustment_percentage = ((current_price - highest_range) / (highest_range - lowest_range)) * 100
+
+        self.log("hvac adjusted for {}% adjustment".format(adjustment_percentage))
+
+        # Get the current date
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
+        # Write the adjustment percentage to a CSV file
+        with open('adjustment_percentages.csv', 'a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([current_date, adjustment_percentage])
+
+hvac_control = hvacControl()
