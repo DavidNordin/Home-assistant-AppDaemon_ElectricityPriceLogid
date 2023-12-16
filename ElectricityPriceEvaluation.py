@@ -6,7 +6,14 @@ from hassapi import Hass
 
 class ElectricityPriceEvaluation(Hass):
     def initialize(self):
-        self.event_cache = set()  # Add this line
+        self.event_cache = set()
+        self.listen_state(self.evaluate_and_update_price_range, "sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
+
+        # Get the current state of the 'tomorrow_valid' attribute
+        tomorrow_valid = self.get_state("sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
+
+        # Call evaluate_and_update_price_range with the current state of 'tomorrow_valid'
+        self.evaluate_and_update_price_range("sensor.nordpool_kwh_se4_sek_3_10_025", "tomorrow_valid", None, tomorrow_valid, {})
 
     def evaluate_and_update_price_range(self, entity, attribute, old, new, kwargs):
         try:
@@ -69,7 +76,7 @@ class ElectricityPriceEvaluation(Hass):
                     if summary not in self.event_cache:
                         self.call_service("calendar/create_event", 
                                           entity_id="calendar.hourly_weighed_range", 
-                                          summary=summary, 
+                                          summary=range_name,  # Use range_name as the summary
                                           description=description,
                                           start_date_time=start_time, 
                                           end_date_time=end_time)
