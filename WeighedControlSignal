@@ -7,14 +7,18 @@ class hvacControl(hass.Hass):
     def initialize(self):
         self.listen_state(self.evaluate_and_update_price_range, "sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
         self.listen_state(self.calculate_adjustment, "sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
-        self.calculate_adjustment()
+        self.calculate_adjustment(skip_state_check=True)
 
     def evaluate_and_update_price_range(self, entity, attribute, old, new, kwargs):
         if new is True:
             self.log("Tomorrow's data is valid: Turning on the price evaluation logic.")
 
             raw_today = self.get_state("sensor.nordpool_kwh_se4_sek_3_10_025", attribute="raw_tomorrow")
+            self.log(f"raw_today: {raw_today}")
+
             prices = [float(entry['value']) for entry in raw_today]
+            self.log(f"prices: {prices}")
+
             average_price = np.mean(prices)
 
             prices_sorted = sorted(prices)
@@ -26,38 +30,40 @@ class hvacControl(hass.Hass):
             upper_middle_range = upper_25_percentile
             highest_range = max(prices_sorted)
 
-            with open('/homeassistant/price_ranges.csv', 'a', newline='') as file:
-                writer = csv.writer(file)
-                for i, entry in enumerate(raw_today):
-                    start_time = entry['start']
-                    end_time = entry['end']
-                    current_price = prices[i]
+            try:
+                with open('/homeassistant/price_ranges.csv', 'a', newline='') as file:
+                    writer = csv.writer(file)
+                    for i, entry in enumerate(raw_today):
+                        start_time = entry['start']
+                        end_time = entry['end']
+                        current_price = prices[i]
 
-                    if current_price <= lower_middle_range:
-                        adjustment_percentage = 100 - ((current_price - lowest_range) / (lower_middle_range - lowest_range)) * 100
-                    elif current_price <= upper_middle_range:
-                        adjustment_percentage = ((current_price - lower_middle_range) / (upper_middle_range - lower_middle_range)) * 100
-                    elif current_price <= highest_range:
-                        adjustment_percentage = -100
-                    else:
-                        adjustment_percentage = ((current_price - highest_range) / (highest_range - lowest_range)) * 100
+                        if current_price <= lower_middle_range:
+                            adjustment_percentage = round(100 - ((current_price - lowest_range) / (lower_middle_range - lowest_range)) * 100)
+                        elif current_price <= upper_middle_range:
+                            adjustment_percentage = round(((current_price - lower_middle_range) / (upper_middle_range - lower_middle_range)) * -100)
+                        elif current_price <= highest_range:
+                            adjustment_percentage = -100
+                        else:
+                            adjustment_percentage = round(((current_price - highest_range) / (highest_range - lowest_range)) * 100)
 
-                    if current_price <= lower_25_percentile:
-                        range_name = "Lowest range"
-                    elif current_price <= average_price:
-                        range_name = "Lower-middle range"
-                    elif current_price <= upper_25_percentile:
-                        range_name = "Upper-middle range"
-                    else:
-                        range_name = "Highest range"
+                        if current_price <= lower_25_percentile:
+                            range_name = "Lowest range"
+                        elif current_price <= average_price:
+                            range_name = "Lower-middle range"
+                        elif current_price <= upper_25_percentile:
+                            range_name = "Upper-middle range"
+                        else:
+                            range_name = "Highest range"
 
-                    summary = f"{range_name} at {start_time}"
-                    description = f"Price: {current_price}, Range: {range_name}, Adjustment: {adjustment_percentage}%"
+                        summary = f"{range_name} at {start_time}"
+                        description = f"Price: {current_price}, Range: {range_name}, Adjustment: {adjustment_percentage}%"
+                        writer.writerow([start_time, description])
+            except Exception as e:
+                self.log(f"Error writing to CSV file: {e}")
 
-                    writer.writerow([summary, description, start_time, end_time, adjustment_percentage])
-
-    def calculate_adjustment(self, entity=None, attribute=None, old=None, new=None, kwargs=None):
-        if new is not None and new != "true":
+    def calculate_adjustment(self, entity=None, attribute=None, old=None, new=None, kwargs=None, skip_state_check=False):
+        if not skip_state_check and (new is None or new == "true"):
             return
 
         raw_tomorrow = self.get_state("sensor.nordpool_kwh_se4_sek_3_10_025", attribute="raw_tomorrow")
@@ -76,13 +82,13 @@ class hvacControl(hass.Hass):
         upper_middle_range = np.percentile(prices_sorted, 75)
         highest_range = max(prices_sorted)
 
-        if current_price <= lowest_range:
-            adjustment_percentage = 100 - ((current_price - lowest_range) / (lower_middle_range - lowest_range)) * 100
-        elif current_price <= lower_middle_range:
-            adjustment_percentage = ((current_price - lower_middle_range) / (upper_middle_range - lower_middle_range)) * 100
+        if current_price <= lower_middle_range:
+            adjustment_percentage = round(100 - ((current_price - lowest_range) / (lower_middle_range - lowest_range)) * 100)
         elif current_price <= upper_middle_range:
+            adjustment_percentage = round(((current_price - lower_middle_range) / (upper_middle_range - lower_middle_range)) * -100)
+        elif current_price <= highest_range:
             adjustment_percentage = -100
         else:
-            adjustment_percentage = ((current_price - highest_range) / (highest_range - lowest_range)) * 100
+            adjustment_percentage = round(((current_price - highest_range) / (highest_range - lowest_range)) * 100)
 
         self.log("hvac adjusted for {}% adjustment".format(adjustment_percentage))
