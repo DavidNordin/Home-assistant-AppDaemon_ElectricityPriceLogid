@@ -6,10 +6,11 @@ from dateutil.parser import parse
 class ReadPriceData(hass.Hass):
 
   def initialize(self):
-    self.run_daily(self.read_price_data, time(0, 0))
+    self.read_price_data(None)  # Run immediately on start
+    self.run_hourly(self.read_price_data, datetime.now())
 
   def read_price_data(self, kwargs):
-    file_path = '/homeassistant/price_range.csv'
+    file_path = '/homeassistant/price_ranges.csv'
     with open(file_path, 'r') as file:
       reader = csv.reader(file)
       next(reader)  # Skip the header row
@@ -22,5 +23,4 @@ class ReadPriceData(hass.Hass):
           data = row[1].split(',')
           price = data[0].split(':')[1].strip()
           adjustment = data[2].split(':')[1].strip()
-          print(f'price: {price}, adjustment: {adjustment}')
-          break
+          self.set_state("sensor.Heatpump_ThrottleSignal", state="on", attributes={"price": price, "adjustment": adjustment})

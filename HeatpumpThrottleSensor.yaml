@@ -1,8 +1,0 @@
-sensor:
-  - platform: command_line
-    name: HeatpumpThrottleSensor_csv
-    command: "python3 /root/addon_configs/a0d7b954_appdaemon/apps/ReadPriceData.py"
-    value_template: "{{ value.split(',')[1].split(':')[1].strip() }}"
-    attribute_templates:
-      price: "{{ value.split(',')[0].split(':')[1].strip() }}"
-      adjustment: "{{ value.split(',')[1].split(':')[1].strip() }}"
