@@ -44,9 +44,12 @@ class ElectricityPriceEvaluation(Hass):
                 sensor_entity = "sensor.weighed_price_range"
 
                 # Set the state and attributes of the sensor
-                self.set_state(sensor_entity, state=prices, attributes={
+                self.set_state(sensor_entity, state=average_price, attributes={
+                    "device_class": "measurement",
+                    "unit_of_measurement": "SEK",
                     "25% lowest price": lower_25_percentile,
                     "25% highest price": upper_25_percentile,
+                    "Average price": average_price,
                     "Lowest range": lowest_range,
                     "Lower-middle range": lower_middle_range,
                     "Upper-middle range": upper_middle_range,

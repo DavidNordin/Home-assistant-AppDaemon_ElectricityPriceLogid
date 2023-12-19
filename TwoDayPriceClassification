@@ -1,0 +1,76 @@
+import hassapi as hass
+import numpy as np
+from datetime import datetime
+import time
+
+STATE_UNKNOWN = 'unknown'
+
+class TwoDayPriceClassification(hass.Hass):
+    def initialize(self):
+        # Fetch today's prices from your sensor
+        today_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
+
+        # Check if the sensor data is valid
+        if today_prices == STATE_UNKNOWN:
+            self.log("Today's sensor data is not available")
+            return
+
+        # Convert the prices from string to float and replace 'unknown' with np.nan
+        if isinstance(today_prices, list):
+            today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices]
+        else:
+            today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices.split(',')]
+
+        # Fetch tomorrow's prices from your sensor
+        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
+
+        # Fetch the validity of tomorrow's prices
+        tomorrow_valid = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow_valid')
+
+        # If tomorrow's prices are valid, wait until the current time is after 13:00 and then use them in the calculations
+        if tomorrow_valid and datetime.now().hour >= 13:
+            # Convert tomorrow's prices from string to float and replace 'unknown' with np.nan
+            if isinstance(tomorrow_prices_partial, list):
+                tomorrow_prices_partial = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial]
+            else:
+                tomorrow_prices_partial = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial.split(',')]
+
+            # Combine today's and tomorrow's prices
+            combined_prices = np.concatenate([today_prices, tomorrow_prices_partial])
+
+            # Calculate two-day mean prices
+            two_day_mean_prices = np.nanmean([today_prices, tomorrow_prices_partial], axis=0)
+        else:
+            # If tomorrow's prices are not valid, use only today's prices in the calculations
+            combined_prices = today_prices
+            two_day_mean_prices = today_prices
+
+        # Choose the number of classes
+        num_classes = 5
+
+        # Determine bin boundaries using percentiles
+        bin_boundaries = np.nanpercentile(two_day_mean_prices, np.linspace(0, 100, num_classes + 1))
+
+        # Binning function
+        def binning(price):
+            for i in range(1, num_classes + 1):
+                if price <= bin_boundaries[i]:
+                    return f'Class {i}'
+            return f'Class {num_classes}+'
+
+        # Apply binning to all two-day mean prices
+        classified_prices = [binning(price) for price in two_day_mean_prices]
+
+        # Display results
+        for hour, price, classification in zip(range(1, len(combined_prices) + 1), combined_prices, classified_prices):
+            self.log(f'Hour {hour}: Two-Day Mean Price: {price:.2f}, Classification: {classification}')
+
+        # Get the current hour
+        current_hour = datetime.now().hour
+
+        # Set the state of the sensor to the current hour's class
+        self.set_state('sensor.Electricity_TwoDay_classification', state=classified_prices[current_hour])
+
+        # Set each hour's classification as an attribute of the sensor
+        for hour, classification in enumerate(classified_prices, start=0):
+            self.set_state('sensor.Electricity_TwoDay_classification', attributes={f'{hour:02d}:00-{(hour+1)%24:02d}:00': classification})
