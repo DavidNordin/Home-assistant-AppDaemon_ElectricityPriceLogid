@@ -1,3 +1,10 @@
+#   /config/appdaemon/apps/ElectricityPriceEvaluation.py
+# Description: AppDaemon app that evaluates the electricity price for tomorrow and creates calendar events for each hour of the day.
+# The calendar events are classified into one of four classes based on the price.
+# The classification is based on the price's position in the distribution of all prices.
+# The classification is then used to set the summary and description of the calendar event.
+#   Author: David Nordin
+        
 import hassapi as hass
 import numpy as np
 from datetime import datetime, time

@@ -1,3 +1,9 @@
+# Desc: This script calculates the adjustment percentage for the HVAC system based on the current price and the price ranges for the next 24 hours.
+# The price ranges are calculated by the TwoDayPriceClassification App.
+# The adjustment percentage is calculated based on the current price's position in the price ranges.
+# The adjustment percentage is then used to set the state of the sensor 'sensor.Heatpump_ThrottleSignal'.
+# The adjustment percentage is also set as an attribute of the sensor.
+
 import hassapi as hass
 import csv
 import numpy as np

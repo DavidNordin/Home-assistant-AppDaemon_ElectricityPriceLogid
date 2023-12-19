@@ -1,3 +1,12 @@
+# Author: David Nordin
+# Description: This App calculates the two-day mean price for each hour and classifies it into one of five classes.
+# The classification is based on the two-day mean price's position in the distribution of all two-day mean prices.
+# The classification is then used to set the state of the sensor 'sensor.Electricity_TwoDay_classification'.
+# The classification of each hour is also set as an attribute of the sensor.
+# The App also prints the two-day mean price and classification for each hour in the AppDaemon log.
+# The App is intended to be used with the Nordpool sensor (
+# https://www.home-assistant.io/integrations/nordpool/).
+      
 import hassapi as hass
 import csv
 from datetime import datetime, timedelta
