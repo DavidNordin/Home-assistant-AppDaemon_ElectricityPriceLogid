@@ -1,21 +1,27 @@
-#   /config/appdaemon/apps/ElectricityPriceEvaluation.py
-# Description: AppDaemon app that evaluates the electricity price for tomorrow and creates calendar events for each hour of the day.
-# The calendar events are classified into one of four classes based on the price.
-# The classification is based on the price's position in the distribution of all prices.
-# The classification is then used to set the summary and description of the calendar event.
-#   Author: David Nordin
-        
-import hassapi as hass
+from appdaemon.plugins.hass import hassapi as hass
 import numpy as np
 from datetime import datetime, time
 
-from hassapi import Hass
-
-class ElectricityPriceEvaluation(Hass):
+class ElectricityPriceEvaluation(hass.Hass):
     def initialize(self):
         self.event_cache = set()
         self.listen_state(self.evaluate_and_update_price_range, "sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
 
+        # Get the current state of the 'tomorrow_valid' attribute
+        tomorrow_valid = self.get_state("sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
+
+        # Call evaluate_and_update_price_range with the current state of 'tomorrow_valid'
+        self.evaluate_and_update_price_range("sensor.nordpool_kwh_se4_sek_3_10_025", "tomorrow_valid", None, tomorrow_valid, {})
+
+        # Schedule evaluate_and_update_price_range to run every 15 minutes
+        now = datetime.now()
+        minutes = (now.minute // 15 + 1) * 15
+        start_time = now.replace(minute=minutes%60, second=0, microsecond=0)
+        if minutes > 59:
+            start_time += timedelta(hours=1)
+        self.run_every(self.update_price_range, start_time, 15*60)  # 15 minutes = 900 seconds
+
+    def update_price_range(self, kwargs):
         # Get the current state of the 'tomorrow_valid' attribute
         tomorrow_valid = self.get_state("sensor.nordpool_kwh_se4_sek_3_10_025", attribute="tomorrow_valid")
 
@@ -33,60 +39,20 @@ class ElectricityPriceEvaluation(Hass):
                 # Collect all the prices
                 prices = [float(entry['value']) for entry in raw_today]
 
-                # Calculate the average price
-                average_price = np.mean(prices)
-
-                # Calculate the 25% lowest and highest prices
-                prices_sorted = sorted(prices)
-                lower_25_percentile = np.percentile(prices_sorted, 25)
-                upper_25_percentile = np.percentile(prices_sorted, 75)
-
-                # Define the ranges
-                lowest_range = (min(prices_sorted), lower_25_percentile)
-                lower_middle_range = (lower_25_percentile, average_price)
-                upper_middle_range = (average_price, upper_25_percentile)
-                highest_range = (upper_25_percentile, max(prices_sorted))
-
-                # Define the sensor entity
-                sensor_entity = "sensor.weighed_price_range"
-
-                # Set the state and attributes of the sensor
-                self.set_state(sensor_entity, state=average_price, attributes={
-                    "device_class": "measurement",
-                    "unit_of_measurement": "SEK",
-                    "25% lowest price": lower_25_percentile,
-                    "25% highest price": upper_25_percentile,
-                    "Average price": average_price,
-                    "Lowest range": lowest_range,
-                    "Lower-middle range": lower_middle_range,
-                    "Upper-middle range": upper_middle_range,
-                    "Highest range": highest_range,
-                })
-
                 # Create a calendar event for each entry in 'raw_today'
                 for i, entry in enumerate(raw_today):
                     # Extract the 'start' and 'end' keys
                     start_time = entry['start']
                     end_time = entry['end']
 
-                    # Define the range according to the price
-                    if prices[i] <= lower_25_percentile:
-                        range_name = "Lowest range"
-                    elif prices[i] <= average_price:
-                        range_name = "Lower-middle range"
-                    elif prices[i] <= upper_25_percentile:
-                        range_name = "Upper-middle range"
-                    else:
-                        range_name = "Highest range"
-
-                    summary = f"{range_name} at {start_time}"  # Include the start time in the summary
-                    description = f"Price: {prices[i]}, Range: {range_name}"
+                    summary = f"Price at {start_time}"  # Include the start time in the summary
+                    description = f"Price: {prices[i]}"
 
                     # Check if the event is in the cache
                     if summary not in self.event_cache:
                         self.call_service("calendar/create_event", 
                                           entity_id="calendar.hourly_weighed_range", 
-                                          summary=range_name,  # Use range_name as the summary
+                                          summary=summary,  # Use summary as the summary
                                           description=description,
                                           start_date_time=start_time, 
                                           end_date_time=end_time)
@@ -102,5 +68,3 @@ class ElectricityPriceEvaluation(Hass):
             import traceback
             self.log(f"Traceback: {traceback.format_exc()}", level="ERROR")
             raise
-
-    # ... any other methods ...

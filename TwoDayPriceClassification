@@ -11,13 +11,16 @@
 
 import hassapi as hass
 import numpy as np
-from datetime import datetime
-import time
+from datetime import datetime, time
 
 STATE_UNKNOWN = 'unknown'
 
 class TwoDayPriceClassification(hass.Hass):
     def initialize(self):
+        # Schedule the update method to run every hour
+        self.run_hourly(self.update, time(minute=0, second=0))
+
+    def update(self, kwargs):
         # Fetch today's prices from your sensor
         today_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
 
