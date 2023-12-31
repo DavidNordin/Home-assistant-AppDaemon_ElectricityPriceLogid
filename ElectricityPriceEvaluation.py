@@ -1,6 +1,6 @@
 from appdaemon.plugins.hass import hassapi as hass
 import numpy as np
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 class ElectricityPriceEvaluation(hass.Hass):
     def initialize(self):

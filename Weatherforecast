@@ -1,0 +1,99 @@
+import requests
+import math
+from datetime import datetime, timedelta
+import hassapi as hass
+
+class WeatherForecast(hass.Hass):
+
+    def initialize(self):
+        self.fetch_weather_data()
+
+    def fetch_weather_data(self):
+        # Constants for the supply temperature calculation
+        X1 = -18.0
+        X2 = 15.0
+        Y1 = 55.0  # Replace with your actual value
+        Y2 = 20.0  # Replace with your actual value
+        MIN = -30.0  # Replace with your actual value
+        MAX = 30.0  # Replace with your actual value
+
+        # Constants for the wind chill index calculation
+        A = 13.12
+        B = 0.6215
+        C = -11.37
+        D = 0.3965
+
+        # Constants for the heat index calculation
+        c = [0, -42.379, 2.04901523, 10.14333127, -0.22475541, -6.83783e-3, -5.481717e-2, 1.22874e-3, 8.5282e-4, -1.99e-6]
+
+        # Replace 'YOUR_LATITUDE' and 'YOUR_LONGITUDE' with your actual latitude and longitude
+        latitude = '56.918100'
+        longitude = '12.730500'
+
+        # Make a GET request to the SMHI API
+        url = f'https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/point/lon/{longitude}/lat/{latitude}/data.json'
+        response = requests.get(url)
+
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the response JSON
+            data = response.json()
+
+            # Extract the forecast data
+            forecast = data['timeSeries']
+
+            # Get the current date and the date of tomorrow
+            today = datetime.now().date()
+            tomorrow = today + timedelta(days=1)
+
+            # Initialize an empty dictionary for the hourly values
+            hourly_values = {}
+
+            # Process the forecast data
+            for entry in forecast:
+                # Extract the date from the valid time
+                time = entry['validTime']
+                date = datetime.strptime(time, "%Y-%m-%dT%H:%M:%SZ").date()
+
+                # Skip this entry if the date is not today or tomorrow
+                if date != today and date != tomorrow:
+                    continue
+
+                # Extract relevant information from each entry
+                parameters = {parameter['name']: parameter['values'][0] for parameter in entry['parameters']}
+
+                # Extract the temperature, wind speed, and relative humidity
+                t = parameters.get('t', 'N/A')
+                ws = parameters.get('ws', 'N/A')
+                r = parameters.get('r', 'N/A')
+
+                # Calculate the "feels like" temperature
+                if t <= 15.0:
+                    # Use the wind chill index for cold weather
+                    feels_like = A + B * t + C * math.pow(ws, 0.16) + D * t * math.pow(ws, 0.16)
+                else:
+                    # Use the heat index for warm weather
+                    feels_like = c[1] + c[2] * t + c[3] * r + c[4] * t * r + c[5] * t * t + c[6] * r * r + c[7] * t * t * r + c[8] * t * r * r + c[9] * t * t * r * r
+
+                # Calculate the supply temperature
+                supply_temp = Y1 + ((t - X1) * (Y2 - Y1)) / (X2 - X1)
+
+                # Add the data to the hourly values
+                hourly_values[time] = {
+                    'temperature': t,
+                    'feels_like': feels_like,
+                    'supply_temp': supply_temp,
+                }
+
+                # Calculate the minimum and maximum supply temperatures
+                min_supply_temp = Y1 + ((MIN - X1) * (Y2 - Y1)) / (X2 - X1)
+                max_supply_temp = Y1 + ((MAX - X1) * (Y2 - Y1)) / (X2 - X1)
+
+            # Print the hourly values
+            for time, data in hourly_values.items():
+                self.log(f"Time: {time}, Temperature: {data['temperature']:.1f}, Feels Like: {data['feels_like']:.1f}, Supply Temp: {data['supply_temp']:.1f}")
+        else:
+            self.log('Error: Failed to retrieve forecast data')
+
+    def terminate(self):
+        pass

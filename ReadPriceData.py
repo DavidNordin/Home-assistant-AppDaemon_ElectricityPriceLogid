@@ -31,10 +31,17 @@ class ReadPriceData(hass.Hass):
 
       current_time = datetime.now()
       current_hour = current_time.hour
-      current_minute = (current_time.minute // 5) * 5  # Round down to the nearest 5 minutes
+      current_minute = (current_time.minute // 15) * 15  # Round down to the nearest 15 minutes
 
       rows = list(reader)
+      if not rows:
+        self.log("CSV file is empty")
+        return
+
       for i, row in enumerate(rows):
+        if len(row) < 3:  # Check if the row contains the expected number of elements
+          continue
+
         timestamp = parse(row[0])
         hour = timestamp.hour
         minute = timestamp.minute
@@ -45,6 +52,10 @@ class ReadPriceData(hass.Hass):
             self.next_data = self.parse_row(rows[i+1])
           break
 
+      if not self.current_data:
+        self.log("No data available for the current period")
+        return
+
       if self.current_data and self.next_data:
         adjustment = self.interpolate(self.current_data['adjustment'], self.next_data['adjustment'])
         self.set_state("sensor.Heatpump_ThrottleSignal", state=adjustment, attributes={
@@ -53,16 +64,19 @@ class ReadPriceData(hass.Hass):
           "price": self.current_data['price']
         })
 
-  def parse_row(self, row):
-    data = row[1].split(',')
-    price = float(data[0].split(':')[1].strip())
-    adjustment = float(data[2].split(':')[1].strip().replace('%', ''))
-    return {'price': price, 'adjustment': adjustment}
-
   def interpolate(self, start, end):
     current_minute = datetime.now().minute
     current_second = datetime.now().second
     total_seconds = current_minute * 60 + current_second
-    transition_progress = total_seconds / (60 * 60)  # Divide by the number of seconds in an hour
+    transition_progress = (total_seconds - 5*60) / (15 * 60)  # Subtract 5 minutes from total_seconds and divide by the number of seconds in 15 minutes
     adjustment = start + (end - start) * transition_progress
     return round(adjustment)  # Round to the nearest whole number
+
+  def parse_row(self, row):
+    # Assuming the row is a list of strings, convert each string to the appropriate data type
+    # This is just an example, you'll need to adjust this to match the actual structure of your data
+    return {
+        'timestamp': parse(row[0]),
+        'price': float(row[1]),
+        'adjustment': float(row[2])
+    }
