@@ -8,12 +8,19 @@ class TwoDayPriceClassification(Hass):
     def initialize(self):
         # Schedule the update method to run every hour
         self.run_hourly(self.update, time(minute=0, second=0))
+        # Call the update method at the start
+        self.update({})
 
     def relative_classification(self, today_prices, tomorrow_prices):
         # Calculate the difference between today's and tomorrow's prices
         price_difference = np.array(today_prices) - np.array(tomorrow_prices)
+        # Round down to two decimal places
+        price_difference = np.floor(price_difference * 100) / 100
         # Set the state of the sensor
-        self.set_state('sensor.Electricity_TwoDay_classification_relative', state=price_difference.tolist())
+        hourly_data_relative = {f"{hour:02d}:00-{(hour+1)%24:02d}:00": value for hour, value in enumerate(price_difference.tolist())}
+        current_hour_value = hourly_data_relative.get(f"{datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_relative, 'current_hour': current_hour_value}
+        self.set_state('sensor.Electricity_TwoDay_classification_relative', state=current_hour_value, attributes=attributes)
 
     def dynamic_classification(self, today_prices, tomorrow_prices):
         # Calculate the difference between today's and tomorrow's prices
@@ -21,19 +28,49 @@ class TwoDayPriceClassification(Hass):
         # Classify the prices based on whether they are increasing or decreasing
         classified_prices_dynamic = ['increasing' if change > 0 else 'decreasing' for change in price_difference]
         # Set the state of the sensor
-        self.set_state('sensor.Electricity_TwoDay_classification_dynamic', state=classified_prices_dynamic)
+        hourly_data_dynamic = {f"{hour:02d}:00-{(hour+1)%24:02d}:00": value for hour, value in enumerate(classified_prices_dynamic)}
+        current_hour_value = hourly_data_dynamic.get(f"{datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_dynamic, 'current_hour': current_hour_value}
+        self.set_state('sensor.Electricity_TwoDay_classification_dynamic', state=current_hour_value, attributes=attributes)
 
     def weighted_classification(self, today_prices, tomorrow_prices):
         # Define the weights for today's and tomorrow's prices
         weights = [0.5, 0.5]  # This means both today's and tomorrow's prices have equal weight
         # Calculate the weighted average of today's and tomorrow's prices
         classified_prices_weighted = np.average([today_prices, tomorrow_prices], axis=0, weights=weights)
+        # Round down to two decimal places
+        classified_prices_weighted = np.floor(classified_prices_weighted * 100) / 100
         # Set the state of the sensor
-        self.set_state('sensor.Electricity_TwoDay_classification_weighted', state=classified_prices_weighted.tolist())
+        hourly_data_weighted = {f"{hour:02d}:00-{(hour+1)%24:02d}:00": value for hour, value in enumerate(classified_prices_weighted.tolist())}
+        current_hour_value = hourly_data_weighted.get(f"{datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_weighted, 'current_hour': current_hour_value}
+        self.set_state('sensor.Electricity_TwoDay_classification_weighted', state=current_hour_value, attributes=attributes)
+
+    def binned_classification(self, today_prices, tomorrow_prices=None):
+        # If tomorrow's prices are available, concatenate today's and tomorrow's prices
+        if tomorrow_prices is not None:
+            prices = np.concatenate((today_prices, tomorrow_prices))
+        # If tomorrow's prices are not available, use today's prices
+        else:
+            prices = np.array(today_prices)
+        # Round down to two decimal places
+        prices = np.floor(prices * 100) / 100
+        # Divide the prices into 7 bins based on the range of the prices
+        bins = np.linspace(min(prices), max(prices) + 0.01, 8)  # Add a small buffer to the maximum value
+        # Classify the prices based on which bin they fall into
+        classified_prices_binned = np.digitize(today_prices, bins)  # Classes from 1 to 7
+        # Set the state of the sensor
+        hourly_data_binned = {f"{hour:02d}:00-{(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned.tolist())}
+        current_hour_value = hourly_data_binned.get(f"{datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_binned, 'current_hour': current_hour_value}
+        self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
 
     def update(self, kwargs):
+        self.log("Update method called")  # Log when the update method is called
+
         # Fetch today's prices from your sensor
         today_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
+        self.log(f"Today's prices: {today_prices}")  # Log today's prices
 
         # Check if the sensor data is valid
         if today_prices == STATE_UNKNOWN:
@@ -48,6 +85,7 @@ class TwoDayPriceClassification(Hass):
 
         # Fetch tomorrow's prices from your sensor
         tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
+        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")  # Log tomorrow's prices
 
         # Fetch the validity of tomorrow's prices
         tomorrow_valid = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow_valid')
@@ -59,3 +97,9 @@ class TwoDayPriceClassification(Hass):
                 tomorrow_prices_partial = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial]
             else:
                 tomorrow_prices_partial = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial.split(',')]
+
+        # Call the classification methods
+        self.relative_classification(today_prices, tomorrow_prices_partial if tomorrow_prices_partial else today_prices)
+        self.dynamic_classification(today_prices, tomorrow_prices_partial if tomorrow_prices_partial else today_prices)
+        self.weighted_classification(today_prices, tomorrow_prices_partial if tomorrow_prices_partial else today_prices)
+        self.binned_classification(today_prices, tomorrow_prices_partial if tomorrow_prices_partial else today_prices)

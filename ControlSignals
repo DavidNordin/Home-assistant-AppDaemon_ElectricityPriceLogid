@@ -64,8 +64,13 @@ class hvacControl(hass.Hass):
             self.run_in(self.calculate_classification_adjustment, 60)
             return
 
-        # Extract the class number from the state
-        class_number = int(classification.split(" ")[1])
+        # Check if the classification string contains a space
+        if " " in classification:
+            # Extract the class number from the state
+            class_number = int(classification.split(" ")[1])
+        else:
+            self.log(f"Unexpected classification value: {classification}")
+            return
 
         # Calculate the adjustment percentage linearly from class 1 to class 7
         # Adjust the range from +100% to -100%

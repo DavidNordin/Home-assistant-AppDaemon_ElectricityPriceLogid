@@ -2,13 +2,28 @@ import requests
 import math
 from datetime import datetime, timedelta
 import hassapi as hass
+import json  # Add this line
 
 class WeatherForecast(hass.Hass):
 
     def initialize(self):
-        self.fetch_weather_data()
+        # Get the current time
+        now = datetime.now()
 
-    def fetch_weather_data(self):
+        # Calculate the next hour
+        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+
+        # Schedule the first run at the next hour
+        self.run_at(self.fetch_weather_data, next_hour)
+
+        # Schedule subsequent runs every hour
+        self.run_hourly(self.fetch_weather_data, next_hour)
+
+    def fetch_weather_data(self, kwargs):
+        # Fetch the current state and attributes of the sensor
+        old_state = self.get_state("sensor.weatherforecast_HVAC")
+        old_attributes = self.get_state("sensor.weatherforecast_HVAC", attribute="all")['attributes']
+
         # Constants for the supply temperature calculation
         X1 = -18.0
         X2 = 15.0
@@ -33,6 +48,9 @@ class WeatherForecast(hass.Hass):
         # Make a GET request to the SMHI API
         url = f'https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/point/lon/{longitude}/lat/{latitude}/data.json'
         response = requests.get(url)
+        
+        # Log the status code and response text
+        # self.log(f"Status Code: {response.status_code}, Response: {response.text}")
 
         # Check if the request was successful
         if response.status_code == 200:
@@ -41,6 +59,9 @@ class WeatherForecast(hass.Hass):
 
             # Extract the forecast data
             forecast = data['timeSeries']
+
+            # Get the "validTime" from the latest forecast entry
+            latest_valid_time = forecast[0]['validTime']
 
             # Get the current date and the date of tomorrow
             today = datetime.now().date()
@@ -51,9 +72,12 @@ class WeatherForecast(hass.Hass):
 
             # Process the forecast data
             for entry in forecast:
-                # Extract the date from the valid time
-                time = entry['validTime']
-                date = datetime.strptime(time, "%Y-%m-%dT%H:%M:%SZ").date()
+                #Extract the date and time from the valid time
+                time = datetime.strptime(entry['validTime'], "%Y-%m-%dT%H:%M:%SZ")
+                date = time.date()  # Add this line
+
+                # Format the time as "YYYYMMDD HH:MM-HH:MM"
+                formatted_time = f"{date.year}{date.month:02d}{date.day:02d} {time.hour:02d}:{time.minute:02d}-{(time.hour+1)%24:02d}:{time.minute:02d}"
 
                 # Skip this entry if the date is not today or tomorrow
                 if date != today and date != tomorrow:
@@ -78,8 +102,13 @@ class WeatherForecast(hass.Hass):
                 # Calculate the supply temperature
                 supply_temp = Y1 + ((t - X1) * (Y2 - Y1)) / (X2 - X1)
 
+                # Round down the values to one decimal place
+                t = math.floor(t * 10) / 10
+                feels_like = math.floor(feels_like * 10) / 10
+                supply_temp = math.floor(supply_temp * 10) / 10
+
                 # Add the data to the hourly values
-                hourly_values[time] = {
+                hourly_values[formatted_time] = {
                     'temperature': t,
                     'feels_like': feels_like,
                     'supply_temp': supply_temp,
@@ -88,10 +117,23 @@ class WeatherForecast(hass.Hass):
                 # Calculate the minimum and maximum supply temperatures
                 min_supply_temp = Y1 + ((MIN - X1) * (Y2 - Y1)) / (X2 - X1)
                 max_supply_temp = Y1 + ((MAX - X1) * (Y2 - Y1)) / (X2 - X1)
+            
+            # Prepare the new attributes
+            new_attributes = {**hourly_values, "time of forecast": latest_valid_time}
+            
+            # Check if the forecast data has changed
+            if old_state != "on" or old_attributes != new_attributes:
+                # Set the state of the sensor
+                self.set_state("sensor.weatherforecast_HVAC", state="on", attributes=new_attributes)
+
+                # Log a message after setting the state of the sensor
+                self.log("State set successfully")
+            else:
+                self.log("Forecast data has not changed")
 
             # Print the hourly values
-            for time, data in hourly_values.items():
-                self.log(f"Time: {time}, Temperature: {data['temperature']:.1f}, Feels Like: {data['feels_like']:.1f}, Supply Temp: {data['supply_temp']:.1f}")
+            for formatted_time, data in hourly_values.items():
+                self.log(f"Time: {formatted_time}, Temperature: {data['temperature']:.1f}, Feels Like: {data['feels_like']:.1f}, Supply Temp: {data['supply_temp']:.1f}")
         else:
             self.log('Error: Failed to retrieve forecast data')
 
