@@ -13,6 +13,9 @@ class WeatherForecast(hass.Hass):
         # Calculate the next hour
         next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
 
+        # Run fetch_weather_data immediately
+        self.fetch_weather_data({})
+
         # Schedule the first run at the next hour
         self.run_at(self.fetch_weather_data, next_hour)
 
@@ -22,7 +25,13 @@ class WeatherForecast(hass.Hass):
     def fetch_weather_data(self, kwargs):
         # Fetch the current state and attributes of the sensor
         old_state = self.get_state("sensor.weatherforecast_HVAC")
-        old_attributes = self.get_state("sensor.weatherforecast_HVAC", attribute="all")['attributes']
+        old_attributes = self.get_state("sensor.weatherforecast_HVAC", attribute="all")
+        
+        # Check if the sensor's state is None
+        if old_attributes is None:
+            old_attributes = {}
+        else:
+            old_attributes = old_attributes['attributes']
 
         # Constants for the supply temperature calculation
         X1 = -18.0
