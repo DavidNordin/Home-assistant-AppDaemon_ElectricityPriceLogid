@@ -12,6 +12,11 @@ class TwoDayPriceClassification(Hass):
         self.update({})
 
     def relative_classification(self, today_prices, tomorrow_prices):
+        # Check if today's prices and tomorrow's prices are different
+        if np.array_equal(today_prices, tomorrow_prices):
+            self.log("Today's prices and tomorrow's prices are the same. Skipping update for this hour.")
+            return
+
         # Calculate the difference between today's and tomorrow's prices
         price_difference = np.array(today_prices) - np.array(tomorrow_prices)
         # Round down to two decimal places
@@ -26,7 +31,7 @@ class TwoDayPriceClassification(Hass):
         # Calculate the difference between today's and tomorrow's prices
         price_difference = np.array(tomorrow_prices) - np.array(today_prices)
         # Classify the prices based on whether they are increasing or decreasing
-        classified_prices_dynamic = ['increasing' if change > 0 else 'decreasing' for change in price_difference]
+        classified_prices_dynamic = ["increasing" if change > 0 else "decreasing" for change in price_difference]
         # Set the state of the sensor
         hourly_data_dynamic = {f"{hour:02d}:00-{(hour+1)%24:02d}:00": value for hour, value in enumerate(classified_prices_dynamic)}
         current_hour_value = hourly_data_dynamic.get(f"{datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)

@@ -1,26 +1,46 @@
-import csv
+def initialize(self):
+    # Initialize previous temperature and time
+    self.previous_temperature = float(self.get_state("sensor.santetorp_rumsgivare_temperature"))
+    self.previous_time = datetime.datetime.now()
 
-def read_price_data(file_path):
-    with open(file_path, 'r') as file:
-        reader = csv.reader(file)
-        next(reader)  # Skip the header row
+    # Run the function immediately
+    self.calculate_thermal_accumulation()
 
-        for row in reader:
-            timestamp = row[0]
-            price = float(row[1].split(':')[1].strip())
-            price_range = row[2].split(':')[1].strip()
-            adjustment = int(row[3].split(':')[1].strip('%'))
+    # Schedule the function to run every hour
+    self.run_hourly(self.calculate_thermal_accumulation, datetime.time(minute=0, second=0))
 
-            yield timestamp, price, price_range, adjustment
+def calculate_thermal_accumulation(self):
+    # Fetch the current indoor and outdoor temperatures from the sensors
+    current_temperature = float(self.get_state("sensor.santetorp_rumsgivare_temperature"))
+    outdoor_temperature = float(self.get_state("sensor.outdoor_temperature"))
 
-# Usage example
-file_path = '/homeassistant/price_range.csv'
-for timestamp, price, price_range, adjustment in read_price_data(file_path):
-    # Use the extracted data to control the heat pump
-    # You can implement your logic here
-    print(f'Timestamp: {timestamp}, Price: {price}, Range: {price_range}, Adjustment: {adjustment}%')
+    # Calculate the temperature difference between indoor and outdoor
+    temperature_difference = current_temperature - outdoor_temperature
 
+    # Calculate the rate of change
+    current_time = datetime.datetime.now()
+    time_interval = (current_time - self.previous_time).total_seconds() / 3600  # in hours
+    rate_of_change = (current_temperature - self.previous_temperature) / time_interval  # in °C/hour
 
+    # Assume a thermal mass for now
+    thermal_mass = 1  # This should be replaced with a more accurate value
 
-# This idea is tabled for now. I'm not sure if it's worth the effort.
-    #2023-12-17
+    thermal_accumulation = thermal_mass * rate_of_change * time_interval
+    new_temperature = current_temperature + thermal_accumulation
+
+    # Set the state and attributes of the sensor
+    self.set_state("sensor.thermal_properties", state=new_temperature, attributes={
+        'indoor_temperature': current_temperature,
+        'outdoor_temperature': outdoor_temperature,
+        'temperature_difference': temperature_difference,
+        'rate_of_change': rate_of_change,
+        'time_interval': time_interval,
+        'thermal_mass': thermal_mass,
+        'thermal_accumulation': thermal_accumulation
+    })
+
+    # Update previous temperature and time
+    self.previous_temperature = current_temperature
+    self.previous_time = current_time
+
+    return new_temperature
