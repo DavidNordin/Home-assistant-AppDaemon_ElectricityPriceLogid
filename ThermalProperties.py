@@ -4,19 +4,34 @@ from datetime import datetime, timedelta, time  # Import time from datetime modu
 class ThermalPropertiesClass(hass.Hass):
 
     def initialize(self):
-        # Initialize previous temperature and time
-        self.previous_temperature = float(self.get_state("sensor.santetorp_rumsgivare_temperature"))
-        self.previous_time = datetime.now()
+        state = self.get_state("sensor.santetorp_rumsgivare_temperature")
+        if state == 'unavailable':
+            self.previous_temperature = 0.0  # or any default value
+        else:
+            self.previous_temperature = float(state)
+        self.previous_time = datetime.now()  # Add this line
 
         # Run the function immediately
         self.calculate_thermal_accumulation()
 
-        # Schedule the function to run every hour
-        self.run_hourly(self.calculate_thermal_accumulation, time(minute=0, second=0))  # Use time() instead of datetime.time()
+        # Schedule the function to run every...
+        self.run_every(self.calculate_thermal_accumulation, datetime.now(), 15*60)  # Run every 15 minutes
+
+        # Listen for changes in the thermal_mass
+        self.listen_state(self.on_thermal_mass_change, "input_number.thermal_mass")
+
+    def on_thermal_mass_change(self, entity, attribute, old, new, kwargs):
+        # This method will be called whenever the thermal_mass changes
+        # You can add code here to react to the change
+        self.calculate_thermal_accumulation()
 
     def calculate_thermal_accumulation(self):
         # Fetch the current indoor and outdoor temperatures from the sensors
-        current_temperature = float(self.get_state("sensor.santetorp_rumsgivare_temperature"))
+        state = self.get_state("sensor.santetorp_rumsgivare_temperature")
+        if state == 'unavailable':
+            self.log("sensor.santetorp_rumsgivare_temperature is unavailable")
+            return
+        current_temperature = float(state)
         outdoor_temperature = float(self.get_state("sensor.santetorp_rumsgivare_utegivare_temperature"))
 
         # Get the current thermal mass
