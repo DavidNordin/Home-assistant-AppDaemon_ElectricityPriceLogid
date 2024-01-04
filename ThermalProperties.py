@@ -14,8 +14,8 @@ class ThermalPropertiesClass(hass.Hass):
         # Run the function immediately
         self.calculate_thermal_accumulation()
 
-        # Schedule the function to run every...
-        self.run_every(self.calculate_thermal_accumulation, datetime.now(), 15*60)  # Run every 15 minutes
+        # Schedule the function to run every minute
+        self.run_minutely(self.calculate_thermal_accumulation, datetime.now())
 
         # Listen for changes in the thermal_mass
         self.listen_state(self.on_thermal_mass_change, "input_number.thermal_mass")
@@ -26,6 +26,9 @@ class ThermalPropertiesClass(hass.Hass):
         self.calculate_thermal_accumulation()
 
     def calculate_thermal_accumulation(self, kwargs=None):
+        # Check if the current minute is a multiple of 15
+        if datetime.now().minute % 15 != 0:
+            return
         # Fetch the current indoor and outdoor temperatures from the sensors
         state = self.get_state("sensor.santetorp_rumsgivare_temperature")
         if state == 'unavailable':
@@ -61,8 +64,8 @@ class ThermalPropertiesClass(hass.Hass):
 
         # Calculate the rate of change
         current_time = datetime.now()
-        time_interval = (current_time - self.previous_time).total_seconds() / 3600  # in hours
-        rate_of_change = (current_temperature - self.previous_temperature) / time_interval  # in °C/hour
+        time_interval = round((current_time - self.previous_time).total_seconds() / 3600, 2)  # in hours
+        rate_of_change = round((current_temperature - self.previous_temperature) / time_interval, 2)  # in °C/hour
 
         thermal_accumulation = thermal_mass * rate_of_change * time_interval
         new_temperature = current_temperature + thermal_accumulation
