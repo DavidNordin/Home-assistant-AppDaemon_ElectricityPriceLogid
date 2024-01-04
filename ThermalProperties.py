@@ -25,7 +25,7 @@ class ThermalPropertiesClass(hass.Hass):
         # You can add code here to react to the change
         self.calculate_thermal_accumulation()
 
-    def calculate_thermal_accumulation(self):
+    def calculate_thermal_accumulation(self, kwargs=None):
         # Fetch the current indoor and outdoor temperatures from the sensors
         state = self.get_state("sensor.santetorp_rumsgivare_temperature")
         if state == 'unavailable':
