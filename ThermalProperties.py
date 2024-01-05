@@ -99,7 +99,7 @@ class ThermalPropertiesClass(hass.Hass):
         heat_loss = round(heat_transfer_coefficient * (window_area + wall_area + underground_wall_area + roof_area) * temperature_difference, 2)  # in kW
 
         # Convert heat loss to kWh
-        heat_loss_kwh = round(heat_loss * (time_interval / 3600), 2)  # Convert kW to kWh
+        heat_loss_kwh = round(heat_loss, 2)  # Assuming heat_loss is already in kWh
 
         # Accumulate energy consumption
         self.total_energy_consumption += heat_loss_kwh
