@@ -96,10 +96,11 @@ class ThermalPropertiesClass(hass.Hass):
         rate_of_change = round((current_temperature - self.previous_temperature) / (time_interval / 60), 2)  # in °C/minute
 
         # Calculate heat loss in kW
-        heat_loss = round(heat_transfer_coefficient * (window_area + wall_area + underground_wall_area + roof_area) * temperature_difference, 2)  # in kW
+        heat_loss = round(heat_transfer_coefficient * (window_area + wall_area + underground_wall_area + roof_area) * temperature_difference, 2)  # in W
 
         # Convert heat loss to kWh
-        heat_loss_kwh = round(heat_loss, 2)  # Assuming heat_loss is already in kWh
+        heat_loss_kwh = round(heat_loss / 1000, 5)  # Convert watts to kilowatts
+
 
         # Accumulate energy consumption
         self.total_energy_consumption += heat_loss_kwh
@@ -107,6 +108,9 @@ class ThermalPropertiesClass(hass.Hass):
         # Calculate thermal accumulation
         thermal_accumulation = round(adjusted_thermal_mass * rate_of_change * (time_interval / 60) * heat_transfer_coefficient, 2)
         new_temperature = round(current_temperature + thermal_accumulation, 2)
+        self.log(f"Temperature Difference: {temperature_difference}")
+        self.log(f"Rate of Change: {rate_of_change}")
+        self.log(f"Heat Loss: {heat_loss}")
 
         error = round(current_temperature - new_temperature, 2)
         thermal_mass = round(thermal_mass + error * self.THERMAL_ADJUSTMENT_FACTOR, 2)
@@ -158,3 +162,6 @@ class ThermalPropertiesClass(hass.Hass):
 
         # Make sure the responsiveness factor stays within a reasonable range
         self.RESPONSIVENESS_FACTOR = min(max(self.RESPONSIVENESS_FACTOR, MIN_RESPONSIVENESS), MAX_RESPONSIVENESS)
+        self.log(f"Error: {error}")
+        self.log(f"Rate of Change Error: {rate_of_change_error}")
+        self.log(f"Adjusted Responsiveness Factor: {self.RESPONSIVENESS_FACTOR}")
