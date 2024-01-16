@@ -9,7 +9,6 @@ MIN_RESPONSIVENESS = 0.005  # Minimum value for responsiveness factor
 MAX_RESPONSIVENESS = 0.02  # Maximum value for responsiveness factor
 HEATED_AREA = 230  # Area of the heated space in square meters (m²)
 
-
 class ThermalPropertiesClass(hass.Hass):
 
     def initialize(self):
@@ -34,6 +33,12 @@ class ThermalPropertiesClass(hass.Hass):
 
         # Start the continuous updates
         self.continuous_factor_update_scheduler()
+
+    def calculate_temperature_deviation(self):
+        indoor_temperature = float(self.get_state("sensor.santetorp_rumsgivare_temperature"))
+        set_point_temperature = float(self.get_state("input_number.thermostat_mainfloor"))
+        deviation = round(indoor_temperature - set_point_temperature, 1)
+        return deviation
 
     def update_adjustment_factor(self, new_factor):
         self.THERMAL_ADJUSTMENT_FACTOR = new_factor
@@ -98,12 +103,13 @@ class ThermalPropertiesClass(hass.Hass):
         # Calculate heat loss in kW
         heat_loss = round(heat_transfer_coefficient * (window_area + wall_area + underground_wall_area + roof_area) * temperature_difference, 2)  # in W
 
+        # Check if the hour has changed
+        if current_hour > self.previous_time.replace(minute=0, second=0, microsecond=0):
+            # Accumulate energy consumption only once per hour
+            self.total_energy_consumption += heat_loss / 1000  # Convert watts to kilowatts
+
         # Convert heat loss to kWh
         heat_loss_kwh = round(heat_loss / 1000, 5)  # Convert watts to kilowatts
-
-
-        # Accumulate energy consumption
-        self.total_energy_consumption += heat_loss_kwh
 
         # Calculate thermal accumulation
         thermal_accumulation = round(adjusted_thermal_mass * rate_of_change * (time_interval / 60) * heat_transfer_coefficient, 2)
@@ -140,7 +146,8 @@ class ThermalPropertiesClass(hass.Hass):
             'heat_transfer_coefficient': heat_transfer_coefficient,
             'momentaneous_consumption_kw': momentaneous_consumption_kw,
             'total_energy_consumption': self.total_energy_consumption,
-            'heat_requirement_per_m2': heat_requirement_per_m2  # Add heat requirement per m² to attributes
+            'heat_requirement_per_m2': heat_requirement_per_m2,
+            'temperature_deviation': self.calculate_temperature_deviation(),  # Corrected deviation
         })
 
         self.call_service("input_number/set_value", entity_id="input_number.thermal_mass", value=thermal_mass)

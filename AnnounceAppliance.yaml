@@ -1,0 +1,40 @@
+- alias: Announce Diskmaskinen
+  trigger:
+    platform: state
+    entity_id: sensor.diskmaskin_operation_state
+    to: 'Ready'
+  action:
+    service: tts.google_translate_say
+    entity_id: media_player.nest_hub
+    data:
+      message: 'Hej! Diskmaskinen är klar!'
+      language: 'sv'
+      gender: 'female'
+
+- alias: Announce Tvättmaskinen
+  trigger:
+    platform: state
+    entity_id: sensor.tvattmaskinen_washer_job_state
+    from: 'none'
+    to: 'none'
+  action:
+    service: tts.google_translate_say
+    entity_id: media_player.nest_hub
+    data:
+      message: 'Hej! Tvättmaskinen är klar!'
+      language: 'sv'
+      gender: 'female'
+
+- alias: Announce Torktumlaren
+  trigger:
+    platform: state
+    entity_id: sensor.torktumlaren_dryer_machine_state
+    from: 'run'
+    to: 'stop'
+  action:
+    service: tts.google_translate_say
+    entity_id: media_player.nest_hub
+    data:
+      message: 'Hej! Torktumlaren är klar!'
+      language: 'sv'
+      gender: 'female'
