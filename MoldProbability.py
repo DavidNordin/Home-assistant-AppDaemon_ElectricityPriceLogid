@@ -2,6 +2,15 @@ import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
 from scipy.integrate import odeint
 
+# Constants
+M_INITIAL = 0.5
+T_INITIAL = 0
+DT = 0.1
+DURATION = 10
+M_MAX = 6
+T1 = 3
+K2_MAX = 2.3
+
 class MoldGrowthIndex(hass.Hass):
     def initialize(self):
         # Schedule the update_mold_growth_index method to run every hour
@@ -12,40 +21,27 @@ class MoldGrowthIndex(hass.Hass):
         T = float(self.get_state("sensor.indoor_temperature"))  # Replace with your sensor
         RH = float(self.get_state("sensor.indoor_humidity"))  # Replace with your sensor
 
-        # Initial conditions for mold growth
-        M_initial = 0.5
-        t_initial = 0
-
-        # Time parameters for the simulation
-        dt = 0.1
-        duration = 10
-
-        # Parameters for the correction coefficient
-        M_max = 6  # Maximum mold growth level
-        t1 = 3  # Time parameter for correction coefficient
-        k2_max = 2.3  # Maximum value for k2
-
         # Function for the differential equation with correction coefficient k2
         def dM_dt_with_correction(M, t):
             # Define the correction coefficient k2 based on the current mold growth level
-            k2 = k2_max * (1 - 2.3 * (M / M_max)**2)
+            k2 = K2_MAX * (1 - 2.3 * (M / M_MAX)**2)
 
             # Define the delay of mold growth when conditions become unfavorable
-            if t < t1 - 6:
+            if t < T1 - 6:
                 delay_factor = 0.032
-            elif t1 - 6 <= t <= t1 - 24:
+            elif T1 - 6 <= t <= T1 - 24:
                 delay_factor = 0
-            elif t > t1 - 24:
+            elif t > T1 - 24:
                 delay_factor = 0.016
 
             # Differential equation with correction coefficient and delay factor
             return (1 / 7) * np.exp(0.68 * (-np.log(T) - 13.9 * RH)) * (1 - k2) - delay_factor
 
         # Time points for the simulation
-        time_points = np.arange(t_initial, duration, dt)
+        time_points = np.arange(T_INITIAL, DURATION, DT)
 
         # Solve the differential equation with correction coefficient using odeint
-        M_values = odeint(dM_dt_with_correction, M_initial, time_points)
+        M_values = odeint(dM_dt_with_correction, M_INITIAL, time_points)
 
         # Map the mold growth levels to categories
         growth_categories = [self.map_to_growth_category(M) for M in M_values.flatten()]
