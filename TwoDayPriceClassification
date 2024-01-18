@@ -63,12 +63,14 @@ class TwoDayPriceClassification(Hass):
         # Divide the prices into 7 bins based on the range of the prices
         bins = np.linspace(min(prices), max(prices) + 0.01, 8)  # Add a small buffer to the maximum value
         # Classify the prices based on which bin they fall into
-        classified_prices_binned = np.digitize(today_prices, bins)  # Classes from 1 to 7
+        classified_prices_binned_today = np.digitize(today_prices, bins)  # Classes from 1 to 7
+        classified_prices_binned_tomorrow = np.digitize(tomorrow_prices, bins) if tomorrow_prices is not None else None
         # Set the state of the sensor with date included in attributes
         date_str = datetime.now().strftime("%Y-%m-%d")
-        hourly_data_binned = {f"{date_str} {hour:02d}:00-{date_str} {(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned.tolist())}
-        current_hour_value = hourly_data_binned.get(f"{date_str} {datetime.now().hour:02d}:00-{date_str} {(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
-        attributes = {**hourly_data_binned, 'current_hour': current_hour_value}
+        hourly_data_binned_today = {f"{date_str} {hour:02d}:00-{date_str} {(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned_today.tolist())}
+        hourly_data_binned_tomorrow = {f"{date_str} {hour:02d}:00-{date_str} {(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned_tomorrow.tolist())} if classified_prices_binned_tomorrow is not None else {}
+        current_hour_value = hourly_data_binned_today.get(f"{date_str} {datetime.now().hour:02d}:00-{date_str} {(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_binned_today, **hourly_data_binned_tomorrow, 'current_hour': current_hour_value}
         self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
 
     def update(self, kwargs):
