@@ -65,20 +65,19 @@ class TwoDayPriceClassification(Hass):
         # Classify the prices based on which bin they fall into
         classified_prices_binned_today = np.digitize(today_prices, bins)  # Classes from 1 to 7
         classified_prices_binned_tomorrow = np.digitize(tomorrow_prices, bins) if tomorrow_prices is not None else None
-        # Set the state of the sensor with date included in attributes
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        hourly_data_binned_today = {f"{date_str} {hour:02d}:00-{date_str} {(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned_today.tolist())}
-        hourly_data_binned_tomorrow = {f"{date_str} {hour:02d}:00-{date_str} {(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned_tomorrow.tolist())} if classified_prices_binned_tomorrow is not None else {}
-        current_hour_value = hourly_data_binned_today.get(f"{date_str} {datetime.now().hour:02d}:00-{date_str} {(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
-        attributes = {**hourly_data_binned_today, **hourly_data_binned_tomorrow, 'current_hour': current_hour_value}
+
+        # Set the state of the sensor with timeslots as keys and class levels as values
+        date_str_today = datetime.now().strftime("%Y%m%d")
+        date_str_tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y%m%d")
+        hourly_data_binned_today = {f"{date_str_today} {hour:02d}:00-{(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned_today.tolist())}
+        hourly_data_binned_tomorrow = {f"{date_str_tomorrow} {hour:02d}:00-{(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(classified_prices_binned_tomorrow.tolist())} if classified_prices_binned_tomorrow is not None else {}
+        current_hour_value = hourly_data_binned_today.get(f"{date_str_today} {datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_binned_today, **hourly_data_binned_tomorrow}
         self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
-
+        
     def update(self, kwargs):
-        self.log("Update method called")  # Log when the update method is called
-
         # Fetch today's prices from your sensor
         today_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
-        self.log(f"Today's prices: {today_prices}")  # Log today's prices
 
         # Check if the sensor data is valid
         if today_prices == STATE_UNKNOWN:
@@ -92,8 +91,7 @@ class TwoDayPriceClassification(Hass):
             today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices.split(',')]
 
         # Fetch tomorrow's prices from your sensor
-        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
-        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")  # Log tomorrow's prices
+        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_sek_3_10_025', attribute='tomorrow')
 
         # Fetch the validity of tomorrow's prices
         tomorrow_valid = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow_valid')
