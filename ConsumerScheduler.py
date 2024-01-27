@@ -47,6 +47,12 @@ class ConsumerScheduler(hass.Hass):
             else:
                 self.log(f"Priority {priority} - No available time slots.")
 
+    def sensor_changed(self, entity, attribute, old, new, kwargs):
+        # Get the new timeslots from the electricity classification sensor
+        self.timeslots = self.get_timeslots(self.electricity_sensor)
+
+        # Extract and display the new available hours for each priority
+        self.extract_available_hours()
 
     def get_timeslots(self, electricity_sensor):
         # Retrieve the sensor state object
@@ -199,3 +205,6 @@ class ConsumerScheduler(hass.Hass):
 
         # Extract and display available hours for each priority
         self.extract_available_hours()
+
+        # Listen for changes in the electricity classification sensor
+        self.listen_state(self.sensor_changed, self.electricity_sensor)
