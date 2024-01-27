@@ -83,7 +83,7 @@ class TwoDayPriceClassification(Hass):
     
     def check_tomorrow_valid(self, kwargs):
         # Fetch tomorrow's prices from the sensor
-        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_sek_3_10_025', attribute='tomorrow')
+        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
         # Check if the prices are valid
         tomorrow_valid = tomorrow_prices_partial is not None and tomorrow_prices_partial != 'unknown'
         # If tomorrow's prices are valid, call the update method and cancel the check_tomorrow_valid method
@@ -93,8 +93,11 @@ class TwoDayPriceClassification(Hass):
 
     def update(self, kwargs):
         # Fetch today's and tomorrow's prices from the sensor
-        today_prices_partial = self.get_state('sensor.nordpool_kwh_sek_3_10_025', attribute='today')
-        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_sek_3_10_025', attribute='tomorrow')
+        today_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
+        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
+        
+        self.log(f"Today's prices: {today_prices_partial}")
+        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")
 
         # Check if the prices are valid
         today_valid = today_prices_partial is not None and today_prices_partial != 'unknown'
@@ -102,13 +105,13 @@ class TwoDayPriceClassification(Hass):
 
         # If today's prices are valid, convert them from string to float and replace 'unknown' with np.nan
         if today_valid:
-            today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices_partial.split(',')]
+            today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices_partial]
         else:
             return  # If today's prices are not valid, return without doing anything
 
         # If tomorrow's prices are valid and the current time is after 13:00, use them in the calculations
         if tomorrow_valid and datetime.now().hour >= 13:
-            tomorrow_prices = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial.split(',')]
+            tomorrow_prices = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial]
             # Call the classification methods with both today's and tomorrow's prices
             self.relative_classification(today_prices, tomorrow_prices)
             self.dynamic_classification(today_prices, tomorrow_prices)
