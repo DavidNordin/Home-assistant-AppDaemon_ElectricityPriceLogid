@@ -70,7 +70,8 @@ class TwoDayPriceClassification(Hass):
         bins = np.linspace(min(prices), max(prices) + 0.01, 8)  # Add a small buffer to the maximum value
         # Classify the prices based on which bin they fall into
         classified_prices_binned_today = np.digitize(today_prices, bins)  # Classes from 1 to 7
-        classified_prices_binned_tomorrow = np.digitize(tomorrow_prices, bins) if tomorrow_prices is not None else None
+        classified_prices_binned_tomorrow = np.digitize(tomorrow_prices, bins) if tomorrow_prices is not None else []
+        return classified_prices_binned_today, classified_prices_binned_tomorrow
 
         # Set the state of the sensor with timeslots as keys and class levels as values
         date_str_today = datetime.now().strftime("%Y%m%d")
@@ -84,49 +85,83 @@ class TwoDayPriceClassification(Hass):
     def check_tomorrow_valid(self, kwargs):
         # Fetch tomorrow's prices from the sensor
         tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
+        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")  # Added logging for tomorrow's prices
+
         # Check if the prices are valid
         tomorrow_valid = tomorrow_prices_partial is not None and tomorrow_prices_partial != 'unknown'
+        self.log(f"Are tomorrow's prices valid? {tomorrow_valid}")  # Added logging for validity check
+
         # If tomorrow's prices are valid, call the update method and cancel the check_tomorrow_valid method
         if tomorrow_valid:
             self.update({})
-            self.cancel_timer(self.check_tomorrow_valid_handle)
+            try:
+                self.cancel_timer(self.check_tomorrow_valid_handle)
+                self.log("Timer successfully cancelled")
+            except ValueError:
+                self.log("Timer already cancelled")
 
     def update(self, kwargs):
         # Fetch today's and tomorrow's prices from the sensor
-        today_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
-        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
-        
-        self.log(f"Today's prices: {today_prices_partial}")
-        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")
+        today_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
+        tomorrow_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
+
+        self.log(f"Today's prices: {today_prices}")
+        self.log(f"Tomorrow's prices: {tomorrow_prices}")
 
         # Check if the prices are valid
-        today_valid = today_prices_partial is not None and today_prices_partial != 'unknown'
-        tomorrow_valid = tomorrow_prices_partial is not None and tomorrow_prices_partial != 'unknown'
+        today_valid = today_prices is not None and today_prices != 'unknown'
+        tomorrow_valid = tomorrow_prices is not None and tomorrow_prices != 'unknown'
 
-        # If today's prices are valid, convert them from string to float and replace 'unknown' with np.nan
-        if today_valid:
-            today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices_partial]
-        else:
-            return  # If today's prices are not valid, return without doing anything
+        # If today's prices are not valid, return without doing anything
+        if not today_valid:
+            return
+
+        # Convert today's prices from string to float and replace 'unknown' with np.nan
+        today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices]
 
         # If tomorrow's prices are valid and the current time is after 13:00, use them in the calculations
         if tomorrow_valid and datetime.now().hour >= 13:
-            tomorrow_prices = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices_partial]
-            # Call the classification methods with both today's and tomorrow's prices
-            self.relative_classification(today_prices, tomorrow_prices)
-            self.dynamic_classification(today_prices, tomorrow_prices)
-            self.weighted_classification(today_prices, tomorrow_prices)
-            self.binned_classification(today_prices, tomorrow_prices)
+            tomorrow_prices = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices]
         else:
-            # If tomorrow's prices are not valid or it's before 13:00, use only today's prices in the calculations
-            self.relative_classification(today_prices, today_prices)
-            self.dynamic_classification(today_prices, today_prices)
-            self.weighted_classification(today_prices, today_prices)
-            self.binned_classification(today_prices, None)
+            tomorrow_prices = None
 
-        # Set the state of the sensor with date included in attributes
+        # Call the classification methods with today's and tomorrow's prices
+        binned_classes_today, binned_classes_tomorrow = self.binned_classification(today_prices, tomorrow_prices)
+
+        # Set the state of the sensor with only the current hour's binned class
         date_str = datetime.now().strftime("%Y-%m-%d")
-        hourly_data_relative = {f"{date_str} {hour:02d}:00-{date_str} {(hour+1)%24:02d}:00": value for hour, value in enumerate(today_prices)}
-        current_hour_value = hourly_data_relative.get(f"{date_str} {datetime.now().hour:02d}:00-{date_str} {(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
-        attributes = {**hourly_data_relative, 'current_hour': current_hour_value}
-        self.set_state('sensor.Electricity_TwoDay_classification_relative', state=current_hour_value, attributes=attributes)
+        hourly_data_binned_today = {f"{date_str} {hour:02d}:00-{(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(binned_classes_today)}
+
+        if tomorrow_prices is not None:
+            date_str_tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+            hourly_data_binned_tomorrow = {f"{date_str_tomorrow} {hour:02d}:00-{(hour+1)%24:02d}:00": f"Class {value}" for hour, value in enumerate(binned_classes_tomorrow)}
+            hourly_data_binned = {**hourly_data_binned_today, **hourly_data_binned_tomorrow}
+        else:
+            hourly_data_binned = hourly_data_binned_today
+
+        current_hour_value = hourly_data_binned.get(f"{date_str} {datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        attributes = {**hourly_data_binned}
+        self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
+
+    def check_tomorrow_valid(self, kwargs):
+        # Fetch tomorrow's prices from the sensor
+        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
+        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")
+
+        # Check if the prices are valid
+        tomorrow_valid = tomorrow_prices_partial is not None and tomorrow_prices_partial != 'unknown'
+        self.log(f"Are tomorrow's prices valid? {tomorrow_valid}")
+
+        # If tomorrow's prices are valid, call the update method and cancel the check_tomorrow_valid method
+        if tomorrow_valid:
+            self.log("Tomorrow's values available, calculating binned classes for both today and tomorrow")
+            self.update({})
+            try:
+                self.cancel_timer(self.check_tomorrow_valid_handle)
+                self.log("Timer stopped")
+            except ValueError:
+                self.log("Timer already cancelled")
+        else:
+            self.log("Tomorrow's values not available, calculating binned classes for today only")
+            # Schedule the binned_classification method to run every minute starting from 13:00
+            self.binned_classification_handle = self.run_minutely(self.binned_classification, time(hour=13, minute=0, second=0))
