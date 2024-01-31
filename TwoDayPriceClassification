@@ -95,7 +95,7 @@ class TwoDayPriceClassification(Hass):
         if tomorrow_valid:
             self.update({})
             try:
-                self.cancel_timer(self.check_tomorrow_valid_handle)
+                self.cancel_timer(self.binned_classification_handle)
                 self.log("Timer successfully cancelled")
             except ValueError:
                 self.log("Timer already cancelled")
