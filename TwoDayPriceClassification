@@ -8,13 +8,9 @@ class TwoDayPriceClassification(Hass):
     def initialize(self):
         # Schedule the update method to run every hour
         self.run_hourly(self.update, time(minute=0, second=0))
-        self.run_minutely(self.check_tomorrow_valid, time(hour=13, minute=0, second=0)) # Check if tomorrow's prices are valid at 13:00
         
         # Schedule the check_tomorrow_valid method to run every few minutes starting from 13:00
         self.check_tomorrow_valid_handle = self.run_minutely(self.check_tomorrow_valid, time(hour=13, minute=0, second=0))
-        
-        # Schedule the check_tomorrow_valid method to run every few minutes starting from 13:00
-        self.run_minutely(self.check_tomorrow_valid, time(hour=13, minute=0, second=0))
         
         # Call the update method at the start
         self.update({})
@@ -97,6 +93,7 @@ class TwoDayPriceClassification(Hass):
         if tomorrow_valid:
             self.update({})
             self.cancel_timer(self.check_tomorrow_valid_handle)
+            self.check_tomorrow_valid_handle = None
             self.log("Timer successfully cancelled")
 
 
