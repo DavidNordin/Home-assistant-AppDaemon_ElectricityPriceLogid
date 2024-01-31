@@ -12,7 +12,9 @@ class TwoDayPriceClassification(Hass):
         
         # Schedule the check_tomorrow_valid method to run every few minutes starting from 13:00
         self.check_tomorrow_valid_handle = self.run_minutely(self.check_tomorrow_valid, time(hour=13, minute=0, second=0))
-        # Call the update method at the start
+        
+        # Schedule the check_tomorrow_valid method to run every few minutes starting from 13:00
+        self.run_minutely(self.check_tomorrow_valid, time(hour=13, minute=0, second=0))
         
         # Call the update method at the start
         self.update({})
@@ -94,11 +96,9 @@ class TwoDayPriceClassification(Hass):
         # If tomorrow's prices are valid, call the update method and cancel the check_tomorrow_valid method
         if tomorrow_valid:
             self.update({})
-            try:
-                self.cancel_timer(self.binned_classification_handle)
-                self.log("Timer successfully cancelled")
-            except ValueError:
-                self.log("Timer already cancelled")
+            self.cancel_timer(self.check_tomorrow_valid_handle)
+            self.log("Timer successfully cancelled")
+
 
     def update(self, kwargs):
         # Fetch today's and tomorrow's prices from the sensor
@@ -142,26 +142,4 @@ class TwoDayPriceClassification(Hass):
         current_hour_value = hourly_data_binned.get(f"{date_str} {datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
         attributes = {**hourly_data_binned}
         self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
-
-    def check_tomorrow_valid(self, kwargs):
-        # Fetch tomorrow's prices from the sensor
-        tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
-        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")
-
-        # Check if the prices are valid
-        tomorrow_valid = tomorrow_prices_partial is not None and tomorrow_prices_partial != 'unknown'
-        self.log(f"Are tomorrow's prices valid? {tomorrow_valid}")
-
-        # If tomorrow's prices are valid, call the update method and cancel the check_tomorrow_valid method
-        if tomorrow_valid:
-            self.log("Tomorrow's values available, calculating binned classes for both today and tomorrow")
-            self.update({})
-            try:
-                self.cancel_timer(self.check_tomorrow_valid_handle)
-                self.log("Timer stopped")
-            except ValueError:
-                self.log("Timer already cancelled")
-        else:
-            self.log("Tomorrow's values not available, calculating binned classes for today only")
-            # Schedule the binned_classification method to run every minute starting from 13:00
-            self.binned_classification_handle = self.run_minutely(self.binned_classification, time(hour=13, minute=0, second=0))
+        
