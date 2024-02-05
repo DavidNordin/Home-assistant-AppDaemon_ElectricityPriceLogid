@@ -1,19 +1,19 @@
 import numpy as np
-from datetime import datetime, time
+from datetime import datetime, time, timedelta  # Import timedelta
 from appdaemon.plugins.hass.hassapi import Hass
 
 STATE_UNKNOWN = 'unknown'
 
 class TwoDayPriceClassification(Hass):
     def initialize(self):
-        # Schedule the update method to run every hour
-        self.run_hourly(self.update, time(minute=0, second=0))
-        
         # Schedule the check_tomorrow_valid method to run every few minutes starting from 13:00
         self.check_tomorrow_valid_handle = self.run_minutely(self.check_tomorrow_valid, time(hour=13, minute=0, second=0))
-        
-        # Call the update method at the start
-        self.update({})
+
+        # Schedule the update method to run every hour
+        self.run_hourly(self.update, time(minute=0, second=0))
+
+        # Call the check_tomorrow_valid method at the start
+        self.check_tomorrow_valid({})
 
     def relative_classification(self, today_prices, tomorrow_prices):
         # Check if today's prices and tomorrow's prices are different
@@ -81,33 +81,31 @@ class TwoDayPriceClassification(Hass):
         self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
     
     def check_tomorrow_valid(self, kwargs):
-        # Fetch tomorrow's prices from the sensor
+        # Fetch tomorrow's prices and tomorrow_valid from the sensor
         tomorrow_prices_partial = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
-        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")  # Added logging for tomorrow's prices
+        tomorrow_valid = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow_valid')
 
-        # Check if the prices are valid
-        tomorrow_valid = tomorrow_prices_partial is not None and tomorrow_prices_partial != 'unknown'
-        self.log(f"Are tomorrow's prices valid? {tomorrow_valid}")  # Added logging for validity check
+        self.log(f"Tomorrow's prices: {tomorrow_prices_partial}")
+        self.log(f"Are tomorrow's prices valid? {tomorrow_valid}")
 
         # If tomorrow's prices are valid, call the update method and cancel the check_tomorrow_valid method
-        if tomorrow_valid:
+        if tomorrow_valid and tomorrow_valid.lower() == 'true':
             self.update({})
             self.cancel_timer(self.check_tomorrow_valid_handle)
             self.check_tomorrow_valid_handle = None
             self.log("Timer successfully cancelled")
-
 
     def update(self, kwargs):
         # Fetch today's and tomorrow's prices from the sensor
         today_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='today')
         tomorrow_prices = self.get_state('sensor.nordpool_kwh_se4_sek_3_10_025', attribute='tomorrow')
 
-        self.log(f"Today's prices: {today_prices}")
-        self.log(f"Tomorrow's prices: {tomorrow_prices}")
-
         # Check if the prices are valid
         today_valid = today_prices is not None and today_prices != 'unknown'
         tomorrow_valid = tomorrow_prices is not None and tomorrow_prices != 'unknown'
+
+        # Initialize tomorrow_valid at the beginning
+        tomorrow_valid = False
 
         # If today's prices are not valid, return without doing anything
         if not today_valid:
@@ -116,8 +114,8 @@ class TwoDayPriceClassification(Hass):
         # Convert today's prices from string to float and replace 'unknown' with np.nan
         today_prices = [float(price) if price != 'unknown' else np.nan for price in today_prices]
 
-        # If tomorrow's prices are valid and the current time is after 13:00, use them in the calculations
-        if tomorrow_valid and datetime.now().hour >= 13:
+        # If tomorrow's prices are valid, use them in the calculations
+        if tomorrow_valid:
             tomorrow_prices = [float(price) if price != 'unknown' else np.nan for price in tomorrow_prices]
         else:
             tomorrow_prices = None
@@ -139,4 +137,3 @@ class TwoDayPriceClassification(Hass):
         current_hour_value = hourly_data_binned.get(f"{date_str} {datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
         attributes = {**hourly_data_binned}
         self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
-        
