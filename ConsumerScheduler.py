@@ -178,8 +178,9 @@ class ConsumerScheduler(hass.Hass):
             self.log(f"Priority {priority} - Total available hours: {total_hours} hours")
 
     def calculate_timeslot_duration(self, timeslot):
-        # Assuming timeslot is in the format 'YYYYMMDD HH:mm-HH:mm'
-        start_str, end_str = timeslot.split(' ')[1].split('-')
+        # Assuming timeslot is in the format 'YYYY-MM-DD HH:mm-HH:mm'
+        date_str, time_str = timeslot.split(' ')
+        start_str, end_str = time_str.split('-')
         start_time = datetime.strptime(start_str, '%H:%M')
         end_time = datetime.strptime(end_str, '%H:%M')
         duration = (end_time - start_time).total_seconds()
@@ -199,7 +200,13 @@ class ConsumerScheduler(hass.Hass):
 
         # Get the electricity classification sensor entity
         self.electricity_sensor = 'sensor.electricity_twoday_classification'
-
+        sensor_data = self.get_state("sensor.electricity_twoday_classification")
+        if isinstance(sensor_data, dict):
+            for time_slot, classification in sensor_data.items():
+                self.log(f"Time Slot: {time_slot}, Classification: {classification}")
+        else:
+            self.log("Error: sensor_data is not a dictionary")
+        
         # Get the timeslots from the electricity classification sensor
         self.timeslots = self.get_timeslots(self.electricity_sensor)
 
