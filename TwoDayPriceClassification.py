@@ -55,7 +55,7 @@ class TwoDayPriceClassification(Hass):
 
         # Concatenate classifications for both days
         attributes = {**hourly_data_binned_today, **hourly_data_binned_tomorrow}
-        current_hour_value = attributes.get(f"{date_str_today} {datetime.now().strftime('%H:%M')}-{date_str_today} {(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)
+        current_hour_value = attributes.get(f"{date_str_today} {datetime.now().hour:02d}:00-{(datetime.now().hour+1)%24:02d}:00", STATE_UNKNOWN)        
         self.set_state('sensor.Electricity_TwoDay_classification', state=current_hour_value, attributes=attributes)
 
     def update(self, kwargs):
