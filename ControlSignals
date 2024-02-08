@@ -57,7 +57,9 @@ class hvacControl(hass.Hass):
         self.log(f"Updated state: {self.get_state('sensor.electricity_PriceOptSignal')}")
 
     def calculate_classification_adjustment(self, entity=None, attribute=None, old=None, new=None, kwargs=None, skip_state_check=False):
+        self.log("calculate_classification_adjustment called")  # Add this line
         classification = self.get_state("sensor.electricity_twoday_classification")
+        self.log(f"classification: {classification}")  # Add this line
         if not classification:  # Check if the state is empty
             self.log("No data available for two-day classification. Skipping adjustment calculation.")
             # Schedule this method to be called again in 1 minute
@@ -68,6 +70,7 @@ class hvacControl(hass.Hass):
         if " " in classification:
             # Extract the class number from the state
             class_number = int(classification.split(" ")[1])
+            self.log(f"class_number: {class_number}")  # Add this line
         else:
             self.log(f"Unexpected classification value: {classification}")
             return
