@@ -4,7 +4,7 @@
 
 from appdaemon.plugins.hass import hassapi as hass
 import numpy as np
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, date
 import json
 
 # Magic Words
@@ -80,6 +80,11 @@ class ConsumerScheduler(hass.Hass):
 
             # Extract the timeslots from the attributes
             timeslots = list(sensor_attributes.keys())
+            
+            # Filter out timeslots that are not for today or tomorrow
+            today = date.today()
+            tomorrow = today + timedelta(days=1)
+            timeslots = [ts for ts in timeslots if today.strftime('%Y-%m-%d') in ts or tomorrow.strftime('%Y-%m-%d') in ts]
 
             # Log the extracted timeslots for debugging
             self.log(f"Extracted timeslots: {timeslots}")
@@ -141,6 +146,12 @@ class ConsumerScheduler(hass.Hass):
             # Extract the class level from the attributes using the timeslot as the key
             class_level_str = sensor_attributes.get(timeslot)
 
+             # Check if the timeslot is for today or tomorrow
+            today = date.today()
+            tomorrow = today + timedelta(days=1)
+            if today.strftime('%Y-%m-%d') not in timeslot and tomorrow.strftime('%Y-%m-%d') not in timeslot:
+                return None
+            
             # Try to convert the class level to an integer
             try:
                 class_level = int(class_level_str.split(" ")[-1])
