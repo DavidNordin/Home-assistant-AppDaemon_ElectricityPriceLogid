@@ -10,18 +10,6 @@ class hvacControl(hass.Hass):
         self.listen_state(self.calculate_classification_adjustment, "sensor.electricity_twoday_classification")
         self.calculate_classification_adjustment(skip_state_check=True)
 
-    def start_run_every_15(self, kwargs):
-        self.log("start_run_every_15 called")  # Log when the method is called
-        now = datetime.now()
-        minutes = (now.minute // 15 + 1) * 15
-        if minutes >= 60:
-            minutes = 0
-        start_time = now.replace(minute=minutes, second=0, microsecond=0)
-        if minutes == 0:
-            start_time += timedelta(hours=1)
-        self.run_every(self.update_weighed_price_range, start_time, 15*60)  # Run every 15 minutes
-        self.log("update_weighed_price_range scheduled")  # Log when the scheduling is done
-
     def start_run_every(self, kwargs):
         now = datetime.now()
         minutes = (now.minute // 5 + 1) * 5
@@ -31,6 +19,18 @@ class hvacControl(hass.Hass):
         if minutes == 0:
             start_time += timedelta(hours=1)
         self.run_every(self.calculate_adjustment, start_time, 5*60)  # Run every 5 minutes
+
+    def start_run_every_15(self, kwargs):
+        self.log("start_run_every_15 called")  # Log when the method is called
+        now = datetime.now()
+        minutes = (now.minute // 15 + 1) * 15
+        if minutes >= 60:
+            minutes = 0
+        start_time = now.replace(minute=minutes + 5, second=0, microsecond=0)  # Offset by 5 minutes
+        if minutes == 0:
+            start_time += timedelta(hours=1)
+        self.run_every(self.update_weighed_price_range, start_time, 15*60)  # Run every 15 minutes
+        self.log("update_weighed_price_range scheduled")  # Log when the scheduling is done
 
     def calculate_adjustment(self, entity=None, attribute=None, old=None, new=None, kwargs=None, skip_state_check=False, now=None):
         prices_today = self.get_state("sensor.nordpool_kwh_se4_sek_3_10_025", attribute="today")
