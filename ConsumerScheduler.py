@@ -18,11 +18,11 @@ NUM_TRIALS_MONTE_CARLO = 1000
 # Acceptance level 1..5 means that the entity can be scheduled in timeslots with priority 1..5
 
 ACCEPTANCE_LEVELS = [
-    range(1, 8),   # Priority 1 accepts class level 1 to 7
-    range(1, 6),   # Priority 2 accepts class level 1 to 5
-    range(1, 5),   # Priority 3 accepts class level 1 to 4
-    range(1, 5),   # Priority 4 accepts class level 1 to 4
-    range(1, 4),   # Priority 5 accepts class level 1 to 3
+    [1, 2, 3, 4, 5],   # Priority 1 accepts class levels 1 to 5
+    [1, 2, 3, 4],      # Priority 2 accepts class levels 1 to 4
+    [1, 2, 3],         # Priority 3 accepts class levels 1 to 3
+    [1, 2],            # Priority 4 accepts class levels 1 to 2
+    [1],               # Priority 5 accepts only class level 1
 ]
 
 def is_accepted(class_level, acceptance):
@@ -32,7 +32,6 @@ def is_accepted(class_level, acceptance):
         return False
 
     return class_level in acceptance
-
 
 class ConsumerScheduler(hass.Hass):
 
@@ -75,17 +74,11 @@ class ConsumerScheduler(hass.Hass):
             tomorrow = today + timedelta(days=1)
             timeslots = [ts for ts in timeslots if today.strftime('%Y-%m-%d') in ts or tomorrow.strftime('%Y-%m-%d') in ts]
 
-            # Log the extracted timeslots for debugging
-            self.log(f"Extracted timeslots: {timeslots}")
-
             return timeslots
 
         # Log an error if the sensor state format is unexpected
         self.log(f"Unexpected sensor state format: {sensor_state_obj}")
         return []
-
-        # Log the extracted timeslot for debugging
-        self.log(f"Extracted timeslot: {timeslot}")
 
         return [timeslot]
 
@@ -136,8 +129,6 @@ class ConsumerScheduler(hass.Hass):
             else:
                 self.log(f"Error: No class level found for timeslot '{timeslot}'")
                 return None, None
-
-            self.log(f"Timeslot: {timeslot}, Class Level String: {class_level_str}")
 
             # Check if the class level is None or cannot be converted to an integer
             if class_level_str is None:
@@ -195,10 +186,6 @@ class ConsumerScheduler(hass.Hass):
                 timeslots_per_priority[priority] = ', '.join(grouped_slots)
             else:
                 self.log(f"Priority {priority} - No available time slots.")
-
-            # Log available time slots and total hours for debugging
-            self.log(f"Priority {priority} - Available time slots: {available_slots}")
-            self.log(f"Priority {priority} - Total available hours: {total_hours_per_priority[priority]} hours")
 
         # Set the state of the sensor.consumer_scheduler entity
         self.set_state("sensor.consumer_scheduler", state="on", attributes={f"Priority {p} unit timeslots": slots for p, slots in timeslots_per_priority.items()})
