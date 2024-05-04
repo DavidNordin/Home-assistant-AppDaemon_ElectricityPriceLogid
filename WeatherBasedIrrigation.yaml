@@ -12,26 +12,12 @@ condition:
 action:
   - condition: template
     value_template: "{{ quota_multiplier > 0 }}"
-  - service: switch.turn_on
-    entity_id: switch.sonoff_smartrelay_1
   - service: script.turn_on
     target:
       entity_id: script.intelligent_irrigation
     data:
       variables:
         duration: "{{ '%02d:%02d:%02d' | format((10 * quota_multiplier) | round | int // 60, (10 * quota_multiplier) | round | int % 60, 0) }}"
-  - delay: 
-      seconds: 5  # Wait for 5 seconds before starting the repeat action
-  - repeat:
-      while:
-        - condition: state
-          entity_id: switch.sonoff_smartrelay_1
-          state: "on"
-      sequence:
-        - service: switch.turn_off
-          entity_id: switch.sonoff_smartrelay_1
-        - delay: 
-            seconds: 10  # Wait for 10 seconds before checking the state again
   - delay: 
       seconds: 10  # Wait for 10 seconds to give the switch time to turn off
   - condition: template
