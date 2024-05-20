@@ -5,7 +5,7 @@ import pytz
 class TemperatureStats(hass.Hass):
     TEMPERATURE_SENSOR = 'sensor.sensor_i_vaxthuset_temperature'
     TEMPERATURE_SPANS_SENSOR = 'sensor.greenhousetemperaturespans'
-    TEMPERATURE_SPANS = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 25), (25, 30), (30, 35)]
+    TEMPERATURE_SPANS = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 25), (25, 30), (30, 35), (35, 40)]
 
     def initialize(self):
         self.log("initialize called")
@@ -62,7 +62,7 @@ class TemperatureStats(hass.Hass):
         timestamps.append((end_time, None))
     
         # Log the number of timestamps generated
-        self.log("Generated {} timestamps".format(len(timestamps)))
+        #self.log("Generated {} timestamps".format(len(timestamps)))
     
         return timestamps
 
@@ -75,8 +75,8 @@ class TemperatureStats(hass.Hass):
         end_time = now.replace(tzinfo=None)
 
         # Log the start_time and end_time
-        self.log("Start time: {}".format(start_time))
-        self.log("End time: {}".format(end_time))
+        #self.log("Start time: {}".format(start_time))
+        #self.log("End time: {}".format(end_time))
 
         # Retrieve historical temperature data
         temperature_data = self.get_temperature_data(start_time, end_time)
@@ -92,7 +92,7 @@ class TemperatureStats(hass.Hass):
                 index = [ts[0].strftime("%Y-%m-%dT%H:%M") for ts in all_timestamps].index(dt)  # Get the index of the timestamp
                 all_timestamps[index] = (all_timestamps[index][0], temp)
                 existing_timestamps_count += 1
-        self.log("Populated {} existing timestamps".format(existing_timestamps_count))
+        #self.log("Populated {} existing timestamps".format(existing_timestamps_count))
 
         # Interpolate missing values
         interpolated_values_count = 0
@@ -115,11 +115,11 @@ class TemperatureStats(hass.Hass):
                     interpolated_values_count += 1
 
         # Log the number of interpolated values
-        self.log("Interpolated {} missing values".format(interpolated_values_count))  # Add this line
+        #self.log("Interpolated {} missing values".format(interpolated_values_count))  # Add this line
         
         # Log the number of unprocessed timestamps
         unprocessed_timestamps_count = len(all_timestamps) - existing_timestamps_count - interpolated_values_count
-        self.log("Unprocessed {} timestamps".format(unprocessed_timestamps_count))
+        #self.log("Unprocessed {} timestamps".format(unprocessed_timestamps_count))
     
         # Fill values from first occurrence of the day if midnight is missing
         if all_timestamps[0][1] is None:
@@ -132,7 +132,7 @@ class TemperatureStats(hass.Hass):
                     self.minutes_in_span[span] += 1
     
         # Log the total number of timestamps processed
-        self.log("Processed {} timestamps in total".format(len(all_timestamps)))
+        #self.log("Processed {} timestamps in total".format(len(all_timestamps)))
     
         # Update the sensor with the new temperature spans
         attributes = {"Temperature within {}-{}ºC".format(span[0], span[1]): minutes for span, minutes in self.minutes_in_span.items()}
