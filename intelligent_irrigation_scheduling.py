@@ -150,15 +150,16 @@ class intelligent_irrigation_scheduling(hass.Hass):
             return
         for scheduled_time in scheduled_times:
             self.log(f"Scheduling watering at {scheduled_time}")
-            self.run_at(self.execute_watering_cycle, scheduled_time)
+            self.run_at(self.execute_watering_cycle, scheduled_time, scheduled_time=scheduled_time)
+
 
     def execute_watering_cycle(self, kwargs):
         self.log("Executing watering cycle")
 
         # Log information about the scheduled callback
-        self.log(f"Scheduled time: {kwargs['scheduled_time']}")
-        self.log(f"Callback function: {kwargs['callback']}")
-        
+        scheduled_time = kwargs.get('scheduled_time', 'N/A')
+        self.log(f"Scheduled time: {scheduled_time}")
+
         # Turn on the irrigation system
         self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn on the irrigation system")
@@ -191,6 +192,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         self.log("Watering cycle complete")
 
+
     def set_sensor_state(self):
         # Convert scheduled times strings to datetime objects
         scheduled_times = [datetime.datetime.strptime(time_str, '%H:%M:%S') for time_str in self.scheduled_times]
@@ -205,8 +207,9 @@ class intelligent_irrigation_scheduling(hass.Hass):
                     break
             # If all scheduled times have passed or there are no scheduled times, set next_run to "N/A"
             if next_run is None:
-                next_run = "N/A"
+                return "N/A"
             return next_run.strftime("%H:%M:%S")
+
 
         # Set sensor state
         attributes = {
