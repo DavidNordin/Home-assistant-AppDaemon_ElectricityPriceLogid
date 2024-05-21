@@ -16,15 +16,15 @@ IRRIGATION_ACTUATOR = 'switch.sonoff_smartrelay_1'
 class intelligent_irrigation_scheduling(hass.Hass):
 
     def initialize(self):
-        self.log("Initializing Intelligent Irrigation Scheduler")        
+        self.log("Initializing Intelligent Irrigation Scheduler")
         self.log(f"Timezone: {TIMEZONE}")
-        self.accumulated_irrigation = {'daily': 0, 'weekly': 0, 'monthly': 0}
         
         # Schedule daily tasks
-        self.run_daily(self.schedule_irrigation, "04:00:00")
+        #self.run_daily(self.schedule_irrigation, "04:00:00")
         
         # Set up listeners
         self.listen_state(self.on_sensor_change, FORECAST_SENSOR, attribute="all")
+        self.listen_state(self.irrigation_actuator_state_change, IRRIGATION_ACTUATOR)
         
         # Initial call to setup irrigation
         self.schedule_irrigation(None)
@@ -92,14 +92,27 @@ class intelligent_irrigation_scheduling(hass.Hass):
     def did_i_water_yesterday(self):
         self.log("Checking if irrigation occurred yesterday")
         
-        last_irrigation_timestamp = self.get_state(SCHEDULE_SENSOR, attribute='last_irrigation')
+        # Get yesterday's date
+        yesterday_date = datetime.datetime.now() - datetime.timedelta(days=1)
+        yesterday_start = yesterday_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_end = yesterday_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        if last_irrigation_timestamp is None or last_irrigation_timestamp == 'N/A':
+        # Get the historical state of the sensor for yesterday
+        yesterday_water_usage = self.get_state('sensor.greenhouse_water_usage_today', start_time=yesterday_start, end_time=yesterday_end)
+        
+        # If there's no historical state for yesterday, no irrigation happened
+        if not yesterday_water_usage:
             return False
+        
+        # Get the final value of the sensor from yesterday
+        yesterday_final_value = yesterday_water_usage[-1]['state']
+        
+        # Get the final value of the sensor for today
+        today_final_value = self.get_state('sensor.greenhouse_water_usage_today')
+        
+        # Compare yesterday's final value with today's final value
+        return yesterday_final_value != today_final_value
 
-        last_irrigation_date = datetime.datetime.strptime(last_irrigation_timestamp, '%Y-%m-%d %H:%M')
-        current_date = datetime.datetime.now().date()
-        return (current_date - last_irrigation_date.date()).days == 1
    
     def schedule_watering_cycles(self):
         self.log("Scheduling watering cycles")
@@ -107,27 +120,22 @@ class intelligent_irrigation_scheduling(hass.Hass):
         scheduled_times = []
         local_tz = pytz.timezone(TIMEZONE)
         
-        # Helper function to convert ISO datetime strings to local time zone and format to "HH:MM:SS"
         def to_local_time_and_format(iso_str):
             utc_time = datetime.datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(pytz.utc)
             local_time = utc_time.astimezone(local_tz)
             return local_time.strftime("%H:%M:%S")
         
-        # Get the next sunrise time in local timezone
-        sunrise = self.get_state("sun.sun", attribute="next_rising")
-        if sunrise:
+        if (sunrise := self.get_state("sun.sun", attribute="next_rising")):
             self.log(f"Next sunrise datetime-format: {sunrise}")
             formatted_sunrise = to_local_time_and_format(sunrise)
             scheduled_times.append(formatted_sunrise)
         
-        # Get the next noon time in local timezone if num_cycles >= 2
         if self.num_cycles >= 2:
             noon = self.get_state("sun.sun", attribute="next_noon")
             if noon:
                 formatted_noon = to_local_time_and_format(noon)
                 scheduled_times.append(formatted_noon)
         
-        # Get the next sunset time in local timezone if num_cycles == 3
         if self.num_cycles == 3:
             sunset = self.get_state("sun.sun", attribute="next_setting")
             if sunset:
@@ -136,12 +144,9 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         scheduled_times.sort()
 
-        #self.log(f"Scheduled watering cycles at: {scheduled_times}")
         self.scheduled_times = scheduled_times
         
         return scheduled_times
-
-
 
     def schedule_watering_callbacks(self, scheduled_times):
         self.log("Scheduling watering callbacks")
@@ -152,37 +157,73 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.log(f"Scheduling watering at {scheduled_time}")
             self.run_at(self.execute_watering_cycle, scheduled_time, scheduled_time=scheduled_time)
 
-
     def execute_watering_cycle(self, kwargs):
         self.log("Executing watering cycle")
 
-        # Log information about the scheduled callback
         scheduled_time = kwargs.get('scheduled_time', 'N/A')
         self.log(f"Scheduled time: {scheduled_time}")
 
-        # Turn on the irrigation system
         self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn on the irrigation system")
 
-        # Check if the irrigation system is on
+        self.sleep(5)
+
         if self.get_state(IRRIGATION_ACTUATOR) != 'on':
             self.log("Failed to start irrigation system, sending notification")
             self.call_service('notify/notify', message='Failed to start irrigation system.')
+            self.update_scheduled_time_status(scheduled_time, "missed")
             return
 
-        # Update the timestamp of the last irrigation
         self.set_state(SCHEDULE_SENSOR, attributes={'last_irrigation': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})
         self.log("Updated last irrigation timestamp")
 
-        # Calculate and sleep for the duration of the watering cycle
         sleep_duration = int(self.water_per_cycle / WATER_OUTPUT_RATE * 3600)
         self.log(f"Sleeping for {sleep_duration} seconds")
+        self.sleep(sleep_duration)
 
-        # Try to turn off the irrigation system with retries
         max_retries = 3
         for attempt in range(max_retries):
             self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
             self.log(f"Attempt {attempt + 1} to turn off the irrigation system")
+            self.sleep(5)
+            if self.get_state(IRRIGATION_ACTUATOR) == 'off':
+                self.log("Irrigation system turned off successfully")
+                self.update_scheduled_time_status(scheduled_time, "cycle finished")
+                break
+        else:
+            self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
+            self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')
+            self.update_scheduled_time_status(scheduled_time, "missed")
+
+        self.log("Watering cycle complete")
+
+    def irrigation_actuator_state_change(self, entity, attribute, old, new, kwargs):
+        self.log(f"Irrigation actuator state change detected: {old} -> {new}")
+
+        if new == 'on':
+            self.log("Irrigation system is on")
+            current_time = datetime.datetime.now().time()
+
+            if not self.is_time_in_scheduled_range(current_time):
+                self.log("Irrigation system is on outside of scheduled times, sending notification")
+                self.call_service('notify/notify', message='Irrigation system turned on outside of scheduled times.')
+                self.turn_off_irrigation()
+
+    def is_time_in_scheduled_range(self, current_time):
+        for scheduled_time_str in self.scheduled_times:
+            if scheduled_time_str != "missed":
+                scheduled_time = datetime.datetime.strptime(scheduled_time_str, '%H:%M:%S').time()
+                if current_time >= scheduled_time:
+                    return True
+        return False
+
+    def turn_off_irrigation(self):
+        self.log("Attempting to turn off irrigation system")
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
+            self.sleep(5)
             if self.get_state(IRRIGATION_ACTUATOR) == 'off':
                 self.log("Irrigation system turned off successfully")
                 break
@@ -190,28 +231,28 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
             self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')
 
-        self.log("Watering cycle complete")
-
-
     def set_sensor_state(self):
-        # Convert scheduled times strings to datetime objects
-        scheduled_times = [datetime.datetime.strptime(time_str, '%H:%M:%S') for time_str in self.scheduled_times]
+        current_time = datetime.datetime.now().time()
+        scheduled_times = []
+        for time in self.scheduled_times:
+            if isinstance(time, str):
+                scheduled_times.append(time)
+            else:
+                time_obj = datetime.datetime.strptime(time, '%H:%M:%S').time()
+                if time_obj > current_time:
+                    scheduled_times.append(time_obj.strftime('%H:%M:%S'))
+                else:
+                    scheduled_times.append("missed")
 
         def calculate_next_run_time():
             current_time = datetime.datetime.now().time()
-            # Find the next run time after the current time
-            next_run = None
             for time in scheduled_times:
-                if time.time() > current_time:
-                    next_run = time
-                    break
-            # If all scheduled times have passed or there are no scheduled times, set next_run to "N/A"
-            if next_run is None:
-                return "N/A"
-            return next_run.strftime("%H:%M:%S")
+                if time != "missed" and time != "cycle finished":
+                    time_obj = datetime.datetime.strptime(time, '%H:%M:%S').time()
+                    if time_obj > current_time:
+                        return time
+            return "N/A"
 
-
-        # Set sensor state
         attributes = {
             'next_run': calculate_next_run_time(),
             'num_cycles': self.num_cycles,
@@ -220,8 +261,12 @@ class intelligent_irrigation_scheduling(hass.Hass):
         }
 
         for i, scheduled_time in enumerate(scheduled_times, start=1):
-            attributes[f'Scheduled cycle {i}/{self.num_cycles}'] = scheduled_time.strftime('%H:%M')
+            attributes[f'Scheduled cycle {i}/{self.num_cycles}'] = scheduled_time
 
-        self.set_state("sensor.sensor_greenhouse_intelligent_irrigation_scheduling", state="scheduled", attributes=attributes)
+        self.set_state(SCHEDULE_SENSOR, state="scheduled", attributes=attributes)
         self.log(f"Updated sensor state with: {attributes}")
-
+    
+    def update_scheduled_time_status(self, scheduled_time, status):
+        self.log(f"Updating scheduled time {scheduled_time} to status: {status}")
+        self.scheduled_times = [time if time != scheduled_time else status for time in self.scheduled_times]
+        self.set_sensor_state()
