@@ -1,4 +1,20 @@
-# HomeAssistant_AppDaemon_ElectricityPriceEvaluation
-Python-based scripts to fetch tomorrows electricity prices from Nordpool, evaluate the prices.
-
-Multiple files for various functionality
+# HomeAssistant_AppDaemon-scripts
+Various scripts for AppDaemon:
+intelligent_irrigation_forecasting - Using machinelearning we create predictions for greenhouse temperature
+intelligent_irrigation_scheduler - based on forecasting we schedule irrigation
+ConsumerScheduler.py - Using electricityprices we scale timeslots for scheduling electricityusage
+ControlSignals.py
+ElectricityPriceEvaluation.py
+GreenhouseTemperatureSpans.py
+GreenhouseTemperatureStatistics.py
+HumiditySensor.py
+IntelligentIrrigation.py
+MoldProbability.py
+NASDAQCommodities.py
+QuantitativeTemperatureComparison.py
+ReadPriceData.py
+ThermalProperties.py
+TwoDayPriceClassification.py
+WeatherBasedIrrigation.yaml
+Weatherforecast
+WeighedControlSignal.py
