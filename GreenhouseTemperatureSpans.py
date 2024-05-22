@@ -101,8 +101,9 @@ class TemperatureStats(hass.Hass):
 
         for timestamp, temp in all_timestamps:
             for span in self.TEMPERATURE_SPANS:
-                if span[0] <= temp < span[1]:
+                if temp is not None and span[0] <= temp < span[1]:
                     self.minutes_in_span[span] += 1
+
 
         attributes = {"Temperature within {}-{}ºC".format(span[0], span[1]): minutes for span, minutes in self.minutes_in_span.items()}
         self.update_sensor('sensor.temperature_spans', attributes)

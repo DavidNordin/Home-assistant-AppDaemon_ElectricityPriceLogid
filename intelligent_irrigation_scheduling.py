@@ -17,7 +17,6 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
     def initialize(self):
         self.log("Initializing Intelligent Irrigation Scheduler")
-        self.log(f"Timezone: {TIMEZONE}")
         
         # Schedule daily tasks
         #self.run_daily(self.schedule_irrigation, "04:00:00")
@@ -36,30 +35,24 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
     def schedule_irrigation(self, kwargs):
         self.log("Scheduling irrigation check")
-        
         sensor_state = self.get_state(FORECAST_SENSOR, attribute="all")
         if sensor_state and "attributes" in sensor_state:
-            attributes = sensor_state["attributes"]
-            temperature_str = attributes.get("daily_mean_temperature", None)
-            
+            temperature_str = sensor_state["attributes"].get("daily_mean_temperature", None)
             if temperature_str:
                 try:
-                    greenhouse_daily_mean_temperature = float(temperature_str[:-2])
-                    self.log(f"Daily mean temperature: {greenhouse_daily_mean_temperature}°C")
-                    
-                    if greenhouse_daily_mean_temperature:
-                        self.determine_irrigation_parameters(greenhouse_daily_mean_temperature)
-                        scheduled_times = self.schedule_watering_cycles()
-                        self.schedule_watering_callbacks(scheduled_times)
-                        self.set_sensor_state()
-                    else:
-                        self.log("Temperature value not found")
+                    temperature = float(temperature_str[:-2])
+                    self.log(f"Daily mean temperature: {temperature}°C")
+                    self.determine_irrigation_parameters(temperature)
+                    scheduled_times = self.schedule_watering_cycles()
+                    self.schedule_watering_callbacks(scheduled_times)
+                    self.set_sensor_state()
                 except ValueError as e:
                     self.log(f"Error parsing temperature value: {e}")
             else:
                 self.log("Daily mean temperature attribute not found")
         else:
             self.log("Sensor attributes not found")
+
 
     def determine_irrigation_parameters(self, greenhouse_daily_mean_temperature):
         self.log("Entered determine_irrigation_parameters")
@@ -86,8 +79,6 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         self.num_cycles = num_cycles
         self.water_per_cycle = water_per_cycle
-
-        self.log(f"Determined irrigation parameters: {num_cycles} cycles, {water_per_cycle} liters per cycle")
 
     def did_i_water_yesterday(self):
         self.log("Checking if irrigation occurred yesterday")
@@ -154,38 +145,38 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.log("No scheduled times found, skipping watering callbacks")
             return
         for scheduled_time in scheduled_times:
-            self.log(f"Scheduling watering at {scheduled_time}")
+            #self.log(f"Scheduling watering at {scheduled_time}")
             self.run_at(self.execute_watering_cycle, scheduled_time, scheduled_time=scheduled_time)
 
-    def execute_watering_cycle(self, kwargs):
+    async def execute_watering_cycle(self, kwargs):
         self.log("Executing watering cycle")
-
+    
         scheduled_time = kwargs.get('scheduled_time', 'N/A')
         self.log(f"Scheduled time: {scheduled_time}")
-
+    
         self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn on the irrigation system")
-
-        self.sleep(5)
-
+    
+        await self.sleep(5)
+    
         if self.get_state(IRRIGATION_ACTUATOR) != 'on':
             self.log("Failed to start irrigation system, sending notification")
             self.call_service('notify/notify', message='Failed to start irrigation system.')
             self.update_scheduled_time_status(scheduled_time, "missed")
             return
-
+    
         self.set_state(SCHEDULE_SENSOR, attributes={'last_irrigation': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})
         self.log("Updated last irrigation timestamp")
-
+    
         sleep_duration = int(self.water_per_cycle / WATER_OUTPUT_RATE * 3600)
         self.log(f"Sleeping for {sleep_duration} seconds")
-        self.sleep(sleep_duration)
-
+        await self.sleep(sleep_duration)
+    
         max_retries = 3
         for attempt in range(max_retries):
             self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
             self.log(f"Attempt {attempt + 1} to turn off the irrigation system")
-            self.sleep(5)
+            await self.sleep(5)
             if self.get_state(IRRIGATION_ACTUATOR) == 'off':
                 self.log("Irrigation system turned off successfully")
                 self.update_scheduled_time_status(scheduled_time, "cycle finished")
@@ -194,7 +185,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
             self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')
             self.update_scheduled_time_status(scheduled_time, "missed")
-
+    
         self.log("Watering cycle complete")
 
     def irrigation_actuator_state_change(self, entity, attribute, old, new, kwargs):
