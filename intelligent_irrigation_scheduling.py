@@ -1,11 +1,15 @@
 import appdaemon.plugins.hass.hassapi as hass
 import pytz
 import datetime
+import asyncio
 
 TIMEZONE = 'Europe/Stockholm'
 local_tz = pytz.timezone(TIMEZONE)
-HIGH_TEMPERATURE_THRESHOLD = 20
-LOW_TEMPERATURE_THRESHOLD = 10
+
+# Define the minimum and maximum values for temperature, cycles, and water
+TEMP_MIN, TEMP_MAX = 5, 25
+CYCLES_MIN, CYCLES_MAX = 0, 3
+WATER_MIN, WATER_MAX = 0, 1.5
 WATER_OUTPUT_RATE = 4  # Liters per hour
 
 FORECAST_SENSOR = 'sensor.sensor_greenhouse_intelligent_irrigation_forecasting'
@@ -27,7 +31,20 @@ class intelligent_irrigation_scheduling(hass.Hass):
         
         # Initial call to setup irrigation
         self.schedule_irrigation(None)
+        
+        # Schedule the background safety check
+        self.background_task = self.create_task(self.periodic_check())
+        
         self.log("Initialization complete")
+        
+    async def periodic_check(self):
+        while True:
+            await asyncio.sleep(60)  # Wait for 60 seconds
+            current_time = datetime.datetime.now().time()
+            if self.get_state(IRRIGATION_ACTUATOR) == 'on' and not self.is_time_in_scheduled_range(current_time):
+                self.log("Irrigation system is on outside of scheduled times, sending notification")
+                self.call_service('notify/notify', message='Irrigation system turned on outside of scheduled times.')
+                self.turn_off_irrigation()
 
     def on_sensor_change(self, entity, attribute, old, new, kwargs):
         self.log("Sensor change detected")
@@ -57,25 +74,15 @@ class intelligent_irrigation_scheduling(hass.Hass):
     def determine_irrigation_parameters(self, greenhouse_daily_mean_temperature):
         self.log("Entered determine_irrigation_parameters")
         
-        if greenhouse_daily_mean_temperature < 5:
-            self.log("Temperature is below 5°C, no irrigation required")
-            num_cycles, water_per_cycle = 0, 0
-        elif 5 <= greenhouse_daily_mean_temperature < 10:
-            self.log("Temperature is between 5°C and 10°C")
-            num_cycles = 1 if self.did_i_water_yesterday() else 0
-            water_per_cycle = 2
-        elif 10 <= greenhouse_daily_mean_temperature < 15:
-            self.log("Temperature is between 10°C and 15°C")
-            num_cycles, water_per_cycle = 1, 2
-        elif 15 <= greenhouse_daily_mean_temperature < 20:
-            self.log("Temperature is between 15°C and 20°C")
-            num_cycles, water_per_cycle = 1, 2
-        elif 20 <= greenhouse_daily_mean_temperature < 25:
-            self.log("Temperature is between 20°C and 25°C")
-            num_cycles, water_per_cycle = 2, 1.5
-        else:
-            self.log("Temperature is above 25°C")
-            num_cycles, water_per_cycle = 3, 1
+        # Calculate the scale factors for cycles and water
+        CYCLES_SCALE = (CYCLES_MAX - CYCLES_MIN) / (TEMP_MAX - TEMP_MIN)
+        WATER_SCALE = (WATER_MAX - WATER_MIN) / (TEMP_MAX - TEMP_MIN)
+
+        # Calculate the number of cycles and water per cycle based on the temperature
+        num_cycles = max(min(int((greenhouse_daily_mean_temperature - TEMP_MIN) * CYCLES_SCALE + CYCLES_MIN), CYCLES_MAX), CYCLES_MIN)
+        water_per_cycle = max(min((greenhouse_daily_mean_temperature - TEMP_MIN) * WATER_SCALE + WATER_MIN, WATER_MAX), WATER_MIN)
+
+        self.log(f"Temperature is {greenhouse_daily_mean_temperature}°C, calculated {num_cycles} cycles and {water_per_cycle} water per cycle")
 
         self.num_cycles = num_cycles
         self.water_per_cycle = water_per_cycle
@@ -117,7 +124,6 @@ class intelligent_irrigation_scheduling(hass.Hass):
             return local_time.strftime("%H:%M:%S")
         
         if (sunrise := self.get_state("sun.sun", attribute="next_rising")):
-            self.log(f"Next sunrise datetime-format: {sunrise}")
             formatted_sunrise = to_local_time_and_format(sunrise)
             scheduled_times.append(formatted_sunrise)
         
@@ -150,34 +156,45 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
     async def execute_watering_cycle(self, kwargs):
         self.log("Executing watering cycle")
-    
+
         scheduled_time = kwargs.get('scheduled_time', 'N/A')
         self.log(f"Scheduled time: {scheduled_time}")
-    
+
         self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn on the irrigation system")
-    
-        await self.sleep(5)
-    
-        if self.get_state(IRRIGATION_ACTUATOR) != 'on':
+
+        # Check the state up to 5 times
+        max_checks = 5
+        system_started = False  # Flag to track if the system started
+        for check in range(max_checks):
+            await self.sleep(1)  # Wait 1 second between checks
+            current_state = self.get_state(IRRIGATION_ACTUATOR)
+            self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
+            if current_state == 'on':
+                system_started = True  # Set flag to True
+                break
+
+        if not system_started:  # Check the flag here
             self.log("Failed to start irrigation system, sending notification")
             self.call_service('notify/notify', message='Failed to start irrigation system.')
             self.update_scheduled_time_status(scheduled_time, "missed")
             return
-    
+
         self.set_state(SCHEDULE_SENSOR, attributes={'last_irrigation': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})
         self.log("Updated last irrigation timestamp")
-    
+
         sleep_duration = int(self.water_per_cycle / WATER_OUTPUT_RATE * 3600)
         self.log(f"Sleeping for {sleep_duration} seconds")
         await self.sleep(sleep_duration)
-    
-        max_retries = 3
+
+        max_retries = 5
         for attempt in range(max_retries):
             self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
             self.log(f"Attempt {attempt + 1} to turn off the irrigation system")
             await self.sleep(5)
-            if self.get_state(IRRIGATION_ACTUATOR) == 'off':
+            current_state = self.get_state(IRRIGATION_ACTUATOR)
+            self.log(f"Check {attempt + 1}/{max_retries}: Actuator state is '{current_state}'")
+            if current_state == 'off':
                 self.log("Irrigation system turned off successfully")
                 self.update_scheduled_time_status(scheduled_time, "cycle finished")
                 break
@@ -185,8 +202,9 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
             self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')
             self.update_scheduled_time_status(scheduled_time, "missed")
-    
+
         self.log("Watering cycle complete")
+
 
     def irrigation_actuator_state_change(self, entity, attribute, old, new, kwargs):
         self.log(f"Irrigation actuator state change detected: {old} -> {new}")

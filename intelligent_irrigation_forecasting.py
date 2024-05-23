@@ -12,6 +12,7 @@ from ephem import Observer, Sun
 from sklearn.linear_model import LinearRegression
 from sklearn.impute import SimpleImputer
 
+API_KEY = "f8da86d4bbb696f7f2f703a23b0eb31f"
 TIMEZONE = 'Europe/Stockholm'
 HIGH_TEMPERATURE_THRESHOLD = 30
 LOW_TEMPERATURE_THRESHOLD = 10
@@ -591,7 +592,7 @@ class intelligent_irrigation_forecasting(hass.Hass):
     def get_weather_forecast_data(self, latitude, longitude):
         self.log(f"Entered {inspect.currentframe().f_code.co_name}")
         self.log("Fetching hourly forecast from OpenWeatherMap")
-        api_key = "f8da86d4bbb696f7f2f703a23b0eb31f"
+        api_key = API_KEY
         weather_url = f"https://api.openweathermap.org/data/3.0/onecall?lat={latitude}&lon={longitude}&exclude=minutely,daily,alerts&appid={api_key}&units=metric"
         weather_data = self.fetch_data_from_url(weather_url)
         if weather_data is not None:
