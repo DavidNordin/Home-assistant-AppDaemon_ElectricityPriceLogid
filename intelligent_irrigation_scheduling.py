@@ -78,20 +78,22 @@ class intelligent_irrigation_scheduling(hass.Hass):
         self.log("Entered determine_irrigation_parameters")
         
         # Calculate the scale factors for cycles and water
-        CYCLES_SCALE = (CYCLES_MAX - CYCLES_MIN) / (TEMP_MAX - TEMP_MIN)
         WATER_SCALE = (WATER_MAX - WATER_MIN) / (TEMP_MAX - TEMP_MIN)  # Adjusted for WATER_MIN..WATER_MAX daily need
-    
-        # Calculate the number of cycles based on the temperature
-        num_cycles = max(min(int((greenhouse_daily_mean_temperature - TEMP_MIN) * CYCLES_SCALE + CYCLES_MIN), CYCLES_MAX), CYCLES_MIN)
-    
+
         # Calculate the daily water need based on the temperature
         daily_water_need = max(min(((greenhouse_daily_mean_temperature - TEMP_MIN) * WATER_SCALE + WATER_MIN), WATER_MAX), WATER_MIN)
-    
-        # Calculate the water per cycle by dividing the daily water need by the number of cycles
-        water_per_cycle = daily_water_need / num_cycles
-    
+
+        # Calculate the number of cycles and water per cycle
+        num_cycles = 1
+        water_per_cycle = daily_water_need
+
+        # If the water per cycle exceeds 1L, increase the number of cycles (up to a maximum of three)
+        while water_per_cycle > 1 and num_cycles < 3:
+            num_cycles += 1
+            water_per_cycle = daily_water_need / num_cycles
+
         self.log(f"Temperature is {greenhouse_daily_mean_temperature}°C, calculated {num_cycles} cycles and {water_per_cycle}L water per cycle")
-    
+
         self.num_cycles = num_cycles
         self.water_per_cycle = water_per_cycle
 
