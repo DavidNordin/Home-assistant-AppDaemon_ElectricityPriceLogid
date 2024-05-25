@@ -7,9 +7,10 @@ TIMEZONE = 'Europe/Stockholm'
 local_tz = pytz.timezone(TIMEZONE)
 
 # Define the minimum and maximum values for temperature, cycles, and water
-TEMP_MIN, TEMP_MAX = 5, 25
+TEMP_MIN, TEMP_MAX = 5, 30
 CYCLES_MIN, CYCLES_MAX = 0, 3
 WATER_MIN, WATER_MAX = 1, 3  # Adjusted for 1..5L daily need
+MAX_WATER_PER_CYCLE = 1.5  # Maximum permitted water per cycle in liters
 
 TOLERANCE = 300  # Define your tolerance in seconds
 
@@ -53,8 +54,18 @@ class intelligent_irrigation_scheduling(hass.Hass):
         self.log("Sensor change detected")
         self.schedule_irrigation(None)
 
+    def clear_old_schedules(self):
+        self.log("Clearing old schedules")
+        # Set scheduled_times to an empty dictionary if there are no schedules
+        self.set_state(SCHEDULE_SENSOR, attributes={})
+        self.log("Cleared all scheduled times")
+    
     def schedule_irrigation(self, kwargs):
         self.log("Scheduling irrigation check")
+    
+        # Clear old schedules
+        self.clear_old_schedules()
+    
         sensor_state = self.get_state(FORECAST_SENSOR, attribute="all")
         if sensor_state and "attributes" in sensor_state:
             temperature_str = sensor_state["attributes"].get("daily_mean_temperature", None)
@@ -73,29 +84,39 @@ class intelligent_irrigation_scheduling(hass.Hass):
         else:
             self.log("Sensor attributes not found")
 
-
     def determine_irrigation_parameters(self, greenhouse_daily_mean_temperature):
         self.log("Entered determine_irrigation_parameters")
         
         # Calculate the scale factors for cycles and water
         WATER_SCALE = (WATER_MAX - WATER_MIN) / (TEMP_MAX - TEMP_MIN)  # Adjusted for WATER_MIN..WATER_MAX daily need
 
-        # Calculate the daily water need based on the temperature
-        daily_water_need = max(min(((greenhouse_daily_mean_temperature - TEMP_MIN) * WATER_SCALE + WATER_MIN), WATER_MAX), WATER_MIN)
+        # Adjusted linear relationship for daily water need based on temperature
+        if TEMP_MIN <= greenhouse_daily_mean_temperature <= TEMP_MAX:
+            daily_water_need = ((greenhouse_daily_mean_temperature - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * (WATER_MAX - WATER_MIN) + WATER_MIN
+        elif greenhouse_daily_mean_temperature < TEMP_MIN:
+            daily_water_need = WATER_MIN
+        else:
+            daily_water_need = WATER_MAX
 
         # Calculate the number of cycles and water per cycle
         num_cycles = 1
         water_per_cycle = daily_water_need
 
-        # If the water per cycle exceeds 1L, increase the number of cycles (up to a maximum of three)
-        while water_per_cycle > 1 and num_cycles < 3:
+        # If the water per cycle exceeds MAX_WATER_PER_CYCLE, increase the number of cycles (up to a maximum of three)
+        while water_per_cycle > MAX_WATER_PER_CYCLE and num_cycles < 3:
             num_cycles += 1
             water_per_cycle = daily_water_need / num_cycles
+
+        # Round the water per cycle to two decimal places
+        water_per_cycle = round(water_per_cycle, 2)
 
         self.log(f"Temperature is {greenhouse_daily_mean_temperature}°C, calculated {num_cycles} cycles and {water_per_cycle}L water per cycle")
 
         self.num_cycles = num_cycles
         self.water_per_cycle = water_per_cycle
+
+
+
 
     def did_i_water_yesterday(self):
         self.log("Checking if irrigation occurred yesterday")
@@ -166,73 +187,88 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
     async def execute_watering_cycle(self, kwargs):
         self.log("Executing watering cycle")
-    
+
         scheduled_time = kwargs.get('scheduled_time', 'N/A')
         self.log(f"Scheduled time: {scheduled_time}")
-    
+
+        # Turn on the irrigation system
         self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn on the irrigation system")
-    
-        # Check the state up to 5 times
+
+        # Check the state up to 5 times to ensure it's on
         max_checks = 5
         system_started = False  # Flag to track if the system started
         for check in range(max_checks):
             await self.sleep(1)  # Wait 1 second between checks
-            current_state = await self.get_state(IRRIGATION_ACTUATOR)  # Add await here
+            current_state = await self.get_state(IRRIGATION_ACTUATOR)
             self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
             if current_state == 'on':
                 system_started = True  # Set flag to True
                 break
-    
+
         if not system_started:  # Check the flag here
             self.log("Failed to start irrigation system, sending notification")
             self.call_service('notify/notify', message='Failed to start irrigation system.')
             self.update_scheduled_time_status(scheduled_time, "missed")
             return
-    
+
         self.set_state(SCHEDULE_SENSOR, attributes={'last_irrigation': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})
         self.log("Updated last irrigation timestamp")
-    
+
         sleep_duration = int(self.water_per_cycle / WATER_OUTPUT_RATE * 3600)
         self.log(f"Sleeping for {sleep_duration} seconds")
         await self.sleep(sleep_duration)
-    
-        max_retries = 5
-        for attempt in range(max_retries):
-            self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
-            self.log(f"Attempt {attempt + 1} to turn off the irrigation system")
-            await self.sleep(5)
-            current_state = self.get_state(IRRIGATION_ACTUATOR)
-            self.log(f"Check {attempt + 1}/{max_retries}: Actuator state is '{current_state}'")
+
+        # Turn off the irrigation system
+        self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
+        self.log("Called service to turn off the irrigation system")
+
+        # Check the state up to 5 times to ensure it's off
+        system_stopped = False  # Flag to track if the system stopped
+        for check in range(max_checks):
+            await self.sleep(1)  # Wait 1 second between checks
+            current_state = await self.get_state(IRRIGATION_ACTUATOR)
+            self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
             if current_state == 'off':
-                self.log("Irrigation system turned off successfully")
+                system_stopped = True  # Set flag to True
                 break
-        else:
-            self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
-            self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')
-            self.update_scheduled_time_status(scheduled_time, "missed")
-        
+
+        if not system_stopped:  # Check the flag here
+            self.log("Failed to stop irrigation system, sending notification")
+            self.call_service('notify/notify', message='Failed to stop irrigation system.')
+            self.update_scheduled_time_status(scheduled_time, "STOP-ERROR")
+            return
+
         # Fetch the history of IRRIGATION_ACTUATOR
-        history = await self.get_state_history(IRRIGATION_ACTUATOR)
-        
+        end_time = datetime.datetime.now()
+        start_time = end_time - datetime.timedelta(days=1)  # Adjust as needed
+        history = await self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
+
+        if history is None or not history:
+            self.log("Failed to retrieve history, sending notification")
+            self.call_service('notify/notify', message='Failed to retrieve irrigation system history.')
+            self.update_scheduled_time_status(scheduled_time, "HISTORY-ERROR")
+            return
+
         # Check if there's an 'on' state followed by an 'off' state in the history
-        for i in range(1, len(history)):
-            if history[i - 1]['state'] == 'on' and history[i]['state'] == 'off':
+        for i in range(1, len(history[0])):
+            if history[0][i - 1]['state'] == 'on' and history[0][i]['state'] == 'off':
                 # Calculate the difference in seconds between the timestamps
-                time_on = datetime.datetime.strptime(history[i - 1]['last_changed'], '%Y-%m-%d %H:%M:%S.%f')
-                time_off = datetime.datetime.strptime(history[i]['last_changed'], '%Y-%m-%d %H:%M:%S.%f')
+                time_on = datetime.datetime.strptime(history[0][i - 1]['last_changed'], '%Y-%m-%dT%H:%M:%S.%f%z')
+                time_off = datetime.datetime.strptime(history[0][i]['last_changed'], '%Y-%m-%dT%H:%M:%S.%f%z')
                 runtime = (time_off - time_on).total_seconds()
-        
+
                 # Compare this difference with the expected cycle length
                 if abs(runtime - self.water_per_cycle * 60) <= TOLERANCE:
                     # If the difference is within the tolerance, update the scheduled time status to 'cycle finished'
-                    self.update_scheduled_time_status(scheduled_time, "cycle finished")
+                    self.update_scheduled_time_status(scheduled_time, "verified cycle")
                     break
         else:
             # If there isn't, update the scheduled time status to 'missed'
-            self.update_scheduled_time_status(scheduled_time, "missed")
-    
+            self.update_scheduled_time_status(scheduled_time, "unverified historical cycle")
+
         self.log("Watering cycle complete")
+                 
 
 
     def irrigation_actuator_state_change(self, entity, attribute, old, new, kwargs):
