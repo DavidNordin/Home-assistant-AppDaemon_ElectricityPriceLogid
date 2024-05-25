@@ -151,7 +151,7 @@ class GreenhouseTemperatureStats(hass.Hass):
         # Get temperature data for the past day
         start_time = now - datetime.timedelta(days=1)
         data = self.get_temperature_data(start_time, now)
-        temperatures = [temp for temp, _ in data]
+        temperatures = data
 
         # Reset daily lowest and highest temperatures at midnight
         self.set_state("sensor.greenhouse_daily_lowest_temperature", state="n/a", attributes={"unit_of_measurement": "°C"})
