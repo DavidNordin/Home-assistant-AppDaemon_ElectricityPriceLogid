@@ -41,26 +41,6 @@ class intelligent_irrigation_scheduling(hass.Hass):
         
         self.log("Initialization complete")
         
-        # TEMP Call the temporary method to log history data
-        self.run_in(self.log_history_data, 1)
-
-    async def log_history_data(self, kwargs):
-        self.log("Logging history data for investigation")
-
-        # Define the entity ID and time range for history data
-        end_time = datetime.datetime.now()
-        start_time = end_time - datetime.timedelta(days=1)  # Adjust as needed
-
-        # Fetch the history data
-        history = await self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
-
-        # Log the history data to investigate its structure
-        self.log(f"History data: {history}")
-
-        # If history is empty or None, log a message
-        if history is None or not history:
-            self.log("No history data found")
-        
     async def periodic_check(self):
         while True:
             await asyncio.sleep(60)  # Wait for 60 seconds
@@ -212,7 +192,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
         self.log(f"Scheduled time: {scheduled_time}")
 
         # Turn on the irrigation system
-        self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
+        self.call_service('switch/turn_on', entity_id='switch.irrigation_actuator')
         self.log("Called service to turn on the irrigation system")
 
         # Check the state up to 5 times to ensure it's on
@@ -220,7 +200,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
         system_started = False  # Flag to track if the system started
         for check in range(max_checks):
             await self.sleep(1)  # Wait 1 second between checks
-            current_state = await self.get_state(IRRIGATION_ACTUATOR)
+            current_state = await self.get_state('switch.irrigation_actuator')
             self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
             if current_state == 'on':
                 system_started = True  # Set flag to True
@@ -232,22 +212,22 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.update_scheduled_time_status(scheduled_time, "missed")
             return
 
-        self.set_state(SCHEDULE_SENSOR, attributes={'last_irrigation': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})
+        self.set_state('sensor.schedule_sensor', attributes={'last_irrigation': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})
         self.log("Updated last irrigation timestamp")
 
-        sleep_duration = int(self.water_per_cycle / WATER_OUTPUT_RATE * 3600)
+        sleep_duration = int(self.water_per_cycle / self.WATER_OUTPUT_RATE * 3600)
         self.log(f"Sleeping for {sleep_duration} seconds")
         await self.sleep(sleep_duration)
 
         # Turn off the irrigation system
-        self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
+        self.call_service('switch/turn_off', entity_id='switch.irrigation_actuator')
         self.log("Called service to turn off the irrigation system")
 
         # Check the state up to 5 times to ensure it's off
         system_stopped = False  # Flag to track if the system stopped
         for check in range(max_checks):
             await self.sleep(1)  # Wait 1 second between checks
-            current_state = await self.get_state(IRRIGATION_ACTUATOR)
+            current_state = await self.get_state('switch.irrigation_actuator')
             self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
             if current_state == 'off':
                 system_stopped = True  # Set flag to True
@@ -260,43 +240,55 @@ class intelligent_irrigation_scheduling(hass.Hass):
             return
 
         # Fetch the history of IRRIGATION_ACTUATOR
-        end_time = datetime.datetime.now()
-        start_time = end_time - datetime.timedelta(days=1)  # Adjust as needed
-        history = await self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
+        try:
+            end_time = datetime.datetime.now()
+            start_time = end_time - datetime.timedelta(days=1)  # Adjust as needed
+            history = await self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
 
-        if history is None or not history:
-            self.log("Failed to retrieve history, sending notification")
-            self.call_service('notify/notify', message='Failed to retrieve irrigation system history.')
+            # Log the history data to investigate its structure
+            self.log(f"History data: {history}")
+
+            if history is None or not history:
+                self.log("Failed to retrieve history, sending notification")
+                self.call_service('notify/notify', message='Failed to retrieve irrigation system history.')
+                self.update_scheduled_time_status(scheduled_time, "HISTORY-ERROR")
+                return
+
+            # Define the local timezone (CEST)
+            local_tz = pytz.timezone('Europe/Stockholm')
+
+            # Check if there's an 'on' state followed by an 'off' state in the history
+            for state_list in history:
+                for i in range(1, len(state_list)):
+                    if state_list[i - 1]['state'] == 'on' and state_list[i]['state'] == 'off':
+                        # Convert timestamps to local timezone
+                        try:
+                            time_on = datetime.datetime.strptime(state_list[i - 1]['last_changed'], '%Y-%m-%dT%H:%M:%S.%f%z')
+                        except ValueError:
+                            time_on = datetime.datetime.strptime(state_list[i - 1]['last_changed'], '%Y-%m-%dT%H:%M:%S%z')
+                        time_on = time_on.astimezone(local_tz)
+
+                        try:
+                            time_off = datetime.datetime.strptime(state_list[i]['last_changed'], '%Y-%m-%dT%H:%M:%S.%f%z')
+                        except ValueError:
+                            time_off = datetime.datetime.strptime(state_list[i]['last_changed'], '%Y-%m-%dT%H:%M:%S%z')
+                        time_off = time_off.astimezone(local_tz)
+
+                        runtime = (time_off - time_on).total_seconds()
+
+                        # Compare this difference with the expected cycle length
+                        if abs(runtime - self.water_per_cycle * 60) <= self.TOLERANCE:
+                            # If the difference is within the tolerance, update the scheduled time status to 'cycle finished'
+                            self.update_scheduled_time_status(scheduled_time, "verified cycle")
+                            break
+                else:
+                    # If there isn't, update the scheduled time status to 'missed'
+                    self.update_scheduled_time_status(scheduled_time, "unverified historical cycle")
+
+        except Exception as e:
+            self.log(f"An error occurred while processing history: {e}")
+            self.call_service('notify/notify', message=f'Error processing irrigation history: {e}')
             self.update_scheduled_time_status(scheduled_time, "HISTORY-ERROR")
-            return
-
-        # Check if there's an 'on' state followed by an 'off' state in the history
-        for i in range(1, len(history[0])):
-            if history[0][i - 1]['state'] == 'on' and history[0][i]['state'] == 'off':
-                # Calculate the difference in seconds between the timestamps
-                time_on_str = history[0][i - 1]['last_changed']
-                time_off_str = history[0][i]['last_changed']
-
-                try:
-                    time_on = datetime.datetime.strptime(time_on_str, '%Y-%m-%dT%H:%M:%S.%f%z')
-                except ValueError:
-                    time_on = datetime.datetime.strptime(time_on_str, '%Y-%m-%dT%H:%M:%S%z')
-
-                try:
-                    time_off = datetime.datetime.strptime(time_off_str, '%Y-%m-%dT%H:%M:%S.%f%z')
-                except ValueError:
-                    time_off = datetime.datetime.strptime(time_off_str, '%Y-%m-%dT%H:%M:%S%z')
-
-                runtime = (time_off - time_on).total_seconds()
-
-                # Compare this difference with the expected cycle length
-                if abs(runtime - self.water_per_cycle * 60) <= TOLERANCE:
-                    # If the difference is within the tolerance, update the scheduled time status to 'cycle finished'
-                    self.update_scheduled_time_status(scheduled_time, "verified cycle")
-                    break
-        else:
-            # If there isn't, update the scheduled time status to 'missed'
-            self.update_scheduled_time_status(scheduled_time, "unverified historical cycle")
 
         self.log("Watering cycle complete")
 
