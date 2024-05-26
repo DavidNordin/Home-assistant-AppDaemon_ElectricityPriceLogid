@@ -41,6 +41,26 @@ class intelligent_irrigation_scheduling(hass.Hass):
         
         self.log("Initialization complete")
         
+        # TEMP Call the temporary method to log history data
+        self.run_in(self.log_history_data, 1)
+
+    async def log_history_data(self, kwargs):
+        self.log("Logging history data for investigation")
+
+        # Define the entity ID and time range for history data
+        end_time = datetime.datetime.now()
+        start_time = end_time - datetime.timedelta(days=1)  # Adjust as needed
+
+        # Fetch the history data
+        history = await self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
+
+        # Log the history data to investigate its structure
+        self.log(f"History data: {history}")
+
+        # If history is empty or None, log a message
+        if history is None or not history:
+            self.log("No history data found")
+        
     async def periodic_check(self):
         while True:
             await asyncio.sleep(60)  # Wait for 60 seconds
@@ -254,8 +274,19 @@ class intelligent_irrigation_scheduling(hass.Hass):
         for i in range(1, len(history[0])):
             if history[0][i - 1]['state'] == 'on' and history[0][i]['state'] == 'off':
                 # Calculate the difference in seconds between the timestamps
-                time_on = datetime.datetime.strptime(history[0][i - 1]['last_changed'], '%Y-%m-%dT%H:%M:%S.%f%z')
-                time_off = datetime.datetime.strptime(history[0][i]['last_changed'], '%Y-%m-%dT%H:%M:%S.%f%z')
+                time_on_str = history[0][i - 1]['last_changed']
+                time_off_str = history[0][i]['last_changed']
+
+                try:
+                    time_on = datetime.datetime.strptime(time_on_str, '%Y-%m-%dT%H:%M:%S.%f%z')
+                except ValueError:
+                    time_on = datetime.datetime.strptime(time_on_str, '%Y-%m-%dT%H:%M:%S%z')
+
+                try:
+                    time_off = datetime.datetime.strptime(time_off_str, '%Y-%m-%dT%H:%M:%S.%f%z')
+                except ValueError:
+                    time_off = datetime.datetime.strptime(time_off_str, '%Y-%m-%dT%H:%M:%S%z')
+
                 runtime = (time_off - time_on).total_seconds()
 
                 # Compare this difference with the expected cycle length
@@ -268,7 +299,6 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.update_scheduled_time_status(scheduled_time, "unverified historical cycle")
 
         self.log("Watering cycle complete")
-                 
 
 
     def irrigation_actuator_state_change(self, entity, attribute, old, new, kwargs):
