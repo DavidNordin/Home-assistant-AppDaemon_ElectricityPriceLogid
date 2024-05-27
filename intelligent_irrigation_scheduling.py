@@ -192,7 +192,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
         self.log(f"Scheduled time: {scheduled_time}")
 
         # Turn on the irrigation system
-        self.call_service('switch/turn_on', entity_id='switch.irrigation_actuator')
+        self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn on the irrigation system")
 
         # Check the state up to 5 times to ensure it's on
@@ -200,7 +200,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
         system_started = False  # Flag to track if the system started
         for check in range(max_checks):
             await self.sleep(1)  # Wait 1 second between checks
-            current_state = await self.get_state('switch.irrigation_actuator')
+            current_state = await self.get_state(IRRIGATION_ACTUATOR)
             self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
             if current_state == 'on':
                 system_started = True  # Set flag to True
@@ -220,14 +220,14 @@ class intelligent_irrigation_scheduling(hass.Hass):
         await self.sleep(sleep_duration)
 
         # Turn off the irrigation system
-        self.call_service('switch/turn_off', entity_id='switch.irrigation_actuator')
+        self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
         self.log("Called service to turn off the irrigation system")
 
         # Check the state up to 5 times to ensure it's off
         system_stopped = False  # Flag to track if the system stopped
         for check in range(max_checks):
             await self.sleep(1)  # Wait 1 second between checks
-            current_state = await self.get_state('switch.irrigation_actuator')
+            current_state = await self.get_state(IRRIGATION_ACTUATOR)
             self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
             if current_state == 'off':
                 system_stopped = True  # Set flag to True
