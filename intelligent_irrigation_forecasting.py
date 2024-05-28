@@ -753,7 +753,7 @@ class intelligent_irrigation_forecasting(hass.Hass):
         self.set_state('sensor.sensor_greenhouse_intelligent_irrigation_forecasting', state='ON', attributes={
             'daily_temperatures': daily_temperature_dict,
             'last_updated': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M'),
-            'daily_mean_temperature': f"{self.greenhouse_daily_mean_temperature:.2f}°C"
+            'daily_mean_temperature': f"{self.greenhouse_daily_mean_temperature:.2f}"
         })
     
         self.log(f"Leaving {inspect.currentframe().f_code.co_name}")
