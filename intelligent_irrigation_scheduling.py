@@ -9,7 +9,7 @@ local_tz = pytz.timezone(TIMEZONE)
 # Define the minimum and maximum values for temperature, cycles, and water
 TEMP_MIN, TEMP_MAX = 5, 30
 CYCLES_MIN, CYCLES_MAX = 0, 3
-WATER_MIN, WATER_MAX = 1, 3  # Adjusted for 1..5L daily need
+WATER_MIN, WATER_MAX = 0, 2  # Adjusted for 1..5L daily need
 MAX_WATER_PER_CYCLE = 1.5  # Maximum permitted water per cycle in liters
 
 TOLERANCE = 300  # Define your tolerance in seconds
@@ -46,17 +46,30 @@ class intelligent_irrigation_scheduling(hass.Hass):
         
     async def periodic_check(self):
         while True:
-            await asyncio.sleep(60)  # Wait for 60 seconds
-            current_time = datetime.datetime.now().time()
-            if self.get_state(IRRIGATION_ACTUATOR) == 'on' and not self.is_time_in_scheduled_range(current_time):
-                self.log("Irrigation system is on outside of scheduled times, sending notification")
-                self.call_service('notify/notify', message='Irrigation system turned on outside of scheduled times.')
-                self.turn_off_irrigation()  # Ensure to the coroutine here
+            try:
+                await asyncio.sleep(60)  # Wait for 60 seconds
+                current_time = datetime.datetime.now().time()
+                
+                # Await the get_state call
+                current_state = await self.get_state(IRRIGATION_ACTUATOR)
+                
+                if current_state == 'on' and not self.is_time_in_scheduled_range(current_time):
+                    self.log("Irrigation system is on outside of scheduled times, sending notification")
+                    
+                    # Await the service call
+                    await self.call_service('notify/notify', message='Irrigation system turned on outside of scheduled times.')
+                    
+                    # Await the turn off function
+                    await self.turn_off_irrigation()
+            except Exception as e:
+                self.log(f"An error occurred during periodic check: {e}")
+
+
 
 
     def on_sensor_change(self, entity, attribute, old, new, kwargs):
         self.log("Sensor change detected")
-        self.schedule_irrigation(None)
+        self.schedule_irrigation(kwargs)
 
 
     def clear_old_schedules(self):
@@ -121,8 +134,8 @@ class intelligent_irrigation_scheduling(hass.Hass):
         # Define a reduction factor based on the deviation
         reduction_factor = 1.0 - (deviation / daily_water_need)
 
-        # Ensure the reduction factor is within a reasonable range (e.g., between 0.1 and 1.0)
-        reduction_factor = max(0.1, min(1.0, reduction_factor))
+        # Ensure the reduction factor is within a reasonable range (e.g., between 0 and 1.0)
+        reduction_factor = max(0, min(1.0, reduction_factor))
 
         # Apply the reduction factor to adjust today's daily water need
         daily_water_need *= reduction_factor
@@ -214,17 +227,27 @@ class intelligent_irrigation_scheduling(hass.Hass):
         
         return cycles, total_liters_irrigated
 
+
     def get_today_irrigation_data(self):
         self.log("Checking if irrigation occurred today")
 
-        # Get today's date range
-        now = datetime.datetime.now()
+        # Get the local timezone from the TIMEZONE variable
+        local_tz = pytz.timezone(TIMEZONE)
+
+        # Get today's date range in local time
+        now = datetime.datetime.now(local_tz)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = now
 
-        # Get the historical state of the irrigation actuator for today
+        # Convert the local time range to UTC
+        today_start_utc = today_start.astimezone(pytz.utc).replace(tzinfo=None)
+        today_end_utc = today_end.astimezone(pytz.utc).replace(tzinfo=None)
+
+        # Get the historical state of the irrigation actuator for today in UTC
         try:
-            history_data = self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=today_start, end_time=today_end)
+            history_data = self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=today_start_utc, end_time=today_end_utc)
+            if history_data is None:
+                raise ValueError("No history data returned")
         except Exception as e:
             self.log(f"Error retrieving history for today: {e}")
             return 0, datetime.timedelta(), 0
@@ -243,12 +266,13 @@ class intelligent_irrigation_scheduling(hass.Hass):
         total_liters_irrigated = 0
         irrigation_start_time = None
 
-        # Helper function to parse datetime
+        # Helper function to parse datetime and convert to local timezone
         def parse_datetime(datetime_str):
             try:
-                return datetime.datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S.%f%z")
+                utc_time = datetime.datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S.%f%z")
             except ValueError:
-                return datetime.datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S%z")
+                utc_time = datetime.datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S%z")
+            return utc_time.astimezone(local_tz)
 
         # Iterate through the history to calculate metrics
         for i in range(len(history)):
@@ -280,6 +304,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
         self.log(f"Total liters irrigated today: {total_liters_irrigated}")
 
         return cycles, total_on_time, total_liters_irrigated
+
 
    
     def schedule_watering_cycles(self):
@@ -328,10 +353,6 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         return scheduled_times
 
-
-
-
-
     def schedule_watering_callbacks(self, scheduled_times):
         self.log("Scheduling watering callbacks")
         if not scheduled_times:
@@ -354,7 +375,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
             self.log(f"Scheduled time: {scheduled_time}")
 
             # Turn on the irrigation system
-            self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
+            await self.call_service('switch/turn_on', entity_id=IRRIGATION_ACTUATOR)
             self.log("Called service to turn on the irrigation system")
 
             # Check the state up to 5 times to ensure it's on
@@ -362,7 +383,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
             system_started = False
             for check in range(max_checks):
                 await self.sleep(1)
-                current_state = self.get_state(IRRIGATION_ACTUATOR)
+                current_state = await self.get_state(IRRIGATION_ACTUATOR)
                 self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
                 if current_state == 'on':
                     system_started = True
@@ -370,7 +391,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
             if not system_started:
                 self.log("Failed to start irrigation system, sending notification")
-                self.call_service('notify/notify', message='Failed to start irrigation system.')
+                await self.call_service('notify/notify', message='Failed to start irrigation system.')
                 self.update_scheduled_time_status(scheduled_time, "missed")
                 return
 
@@ -382,14 +403,14 @@ class intelligent_irrigation_scheduling(hass.Hass):
             await self.sleep(sleep_duration)
 
             # Turn off the irrigation system
-            self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
+            await self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)
             self.log("Called service to turn off the irrigation system")
 
             # Check the state up to 5 times to ensure it's off
             system_stopped = False
             for check in range(max_checks):
                 await self.sleep(1)
-                current_state = self.get_state(IRRIGATION_ACTUATOR)
+                current_state = await self.get_state(IRRIGATION_ACTUATOR)
                 self.log(f"Check {check + 1}/{max_checks}: Actuator state is '{current_state}'")
                 if current_state == 'off':
                     system_stopped = True
@@ -397,59 +418,53 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
             if not system_stopped:
                 self.log("Failed to stop irrigation system, sending notification")
-                self.call_service('notify/notify', message='Failed to stop irrigation system.')
+                await self.call_service('notify/notify', message='Failed to stop irrigation system.')
                 self.update_scheduled_time_status(scheduled_time, "STOP-ERROR")
                 return
 
             # Fetch the history of IRRIGATION_ACTUATOR
             try:
-                end_time = datetime.datetime.now(tz=pytz.utc)
-                start_time = end_time - datetime.timedelta(days=1)  # Adjust as needed
-                history = self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
+                # Fetch the history of IRRIGATION_ACTUATOR
+                end_time = datetime.datetime.now(tz=pytz.utc).replace(tzinfo=None)
+                start_time = (end_time - datetime.timedelta(days=1)).replace(tzinfo=None)
 
-                if history is None or not history:
+                history = await self.get_history(entity_id=IRRIGATION_ACTUATOR, start_time=start_time, end_time=end_time)
+
+                if not history:
                     self.log("Failed to retrieve history, sending notification")
-                    self.call_service('notify/notify', message='Failed to retrieve irrigation system history.')
+                    await self.call_service('notify/notify', message='Failed to retrieve irrigation system history.')
                     self.update_scheduled_time_status(scheduled_time, "HISTORY-ERROR")
                     return
 
                 # Check if there's an 'on' state followed by an 'off' state in the history
+                verified_cycle = False
                 for state_list in history:
                     for i in range(1, len(state_list)):
                         if state_list[i - 1]['state'] == 'on' and state_list[i]['state'] == 'off':
-                            # Convert timestamps to local timezone
-                            try:
-                                time_on = datetime.datetime.strptime(state_list[i - 1]['last_changed'], "%Y-%m-%dT%H:%M:%S.%f%z")
-                            except ValueError:
-                                time_on = datetime.datetime.strptime(state_list[i - 1]['last_changed'], "%Y-%m-%dT%H:%M:%S%z")
-                            time_on = time_on.astimezone(local_tz)
-
-                            try:
-                                time_off = datetime.datetime.strptime(state_list[i]['last_changed'], "%Y-%m-%dT%H:%M:%S.%f%z")
-                            except ValueError:
-                                time_off = datetime.datetime.strptime(state_list[i]['last_changed'], "%Y-%m-%dT%H:%M:%S%z")
-                            time_off = time_off.astimezone(local_tz)
-
+                            time_on = datetime.datetime.fromisoformat(state_list[i - 1]['last_changed'].replace("Z", "+00:00"))
+                            time_off = datetime.datetime.fromisoformat(state_list[i]['last_changed'].replace("Z", "+00:00"))
                             runtime = (time_off - time_on).total_seconds()
 
                             # Compare this difference with the expected cycle length
                             if abs(runtime - self.water_per_cycle * 60) <= TOLERANCE:
                                 # If the difference is within the tolerance, update the scheduled time status to 'cycle finished'
-                                self.update_scheduled_time_status(scheduled_time, "verified cycle")
+                                self.update_scheduled_time_status(datetime.datetime.now().strftime('%H:%M:%S'), "verified cycle")
+                                verified_cycle = True
                                 break
-                    else:
-                        # If there isn't, update the scheduled time status to 'missed'
-                        self.update_scheduled_time_status(scheduled_time, "unverified historical cycle")
-
+                    if verified_cycle:
+                        break
+                else:
+                    # If there isn't, update the scheduled time status to 'missed'
+                    self.update_scheduled_time_status(scheduled_time, "unverified historical cycle")
             except Exception as e:
                 self.log(f"An error occurred while processing history: {e}")
-                self.call_service('notify/notify', message=f'Error processing irrigation history: {e}')
                 self.update_scheduled_time_status(scheduled_time, "HISTORY-ERROR")
 
             self.log("Watering cycle complete")
 
         finally:
             self.watering_cycle_in_progress = False
+
 
 
     async def irrigation_actuator_state_change(self, entity, attribute, old, new, kwargs):
@@ -503,19 +518,23 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         max_retries = 5
         for attempt in range(max_retries):
-            self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)  # here
-            self.sleep(5)  # here
+            await self.call_service('switch/turn_off', entity_id=IRRIGATION_ACTUATOR)  
+            self.log(f"Called service to turn off the irrigation system, attempt {attempt + 1}")
 
             # Add a delay to allow the state to update
             await self.sleep(5)  # Adjust the delay time as needed
 
             current_state = self.get_state(IRRIGATION_ACTUATOR)
+            self.log(f"Attempt {attempt + 1}/{max_retries}: Actuator state is '{current_state}'")
+
             if current_state == 'off':
                 self.log("Irrigation system turned off successfully")
-                break
-        else:
-            self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
-            self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')  # here
+                return
+
+        self.log("Failed to turn off irrigation system after multiple attempts, sending notification")
+        await self.call_service('notify/notify', message='Failed to turn off irrigation system after multiple attempts.')
+
+
 
 
     def set_sensor_state(self):
@@ -535,9 +554,12 @@ class intelligent_irrigation_scheduling(hass.Hass):
             current_time = datetime.datetime.now().time()
             for time in scheduled_times:
                 if time != "missed" and time != "cycle finished":
-                    time_obj = datetime.datetime.strptime(time, '%H:%M:%S').time()
-                    if time_obj > current_time:
-                        return time
+                    try:
+                        time_obj = datetime.datetime.strptime(time, '%H:%M:%S').time()
+                        if time_obj > current_time:
+                            return time
+                    except ValueError:
+                        continue
             return "N/A"
 
         attributes = {
@@ -565,5 +587,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
     def update_scheduled_time_status(self, scheduled_time, status):
         self.log(f"Updating scheduled time {scheduled_time} to status: {status}")
-        self.scheduled_times = [time if time != scheduled_time else status for time in self.scheduled_times]
+        if not hasattr(self, 'scheduled_time_statuses'):
+            self.scheduled_time_statuses = {}
+        self.scheduled_time_statuses[scheduled_time] = status
         self.set_sensor_state()
