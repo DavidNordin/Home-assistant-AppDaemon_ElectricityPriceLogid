@@ -7,10 +7,16 @@ TIMEZONE = 'Europe/Stockholm'
 local_tz = pytz.timezone(TIMEZONE)
 
 # Define the minimum and maximum values for temperature, cycles, and water
-TEMP_MIN, TEMP_MAX = 5, 30
+TEMP_MIN, TEMP_MAX = 10, 30
 CYCLES_MIN, CYCLES_MAX = 0, 3
-WATER_MIN, WATER_MAX = 0, 2  # Adjusted for 1..5L daily need
+WATER_MIN, WATER_MAX = 0, 1  # Adjusted for 1..5L daily need
 MAX_WATER_PER_CYCLE = 1.5  # Maximum permitted water per cycle in liters
+
+# Define the temperature below which no irrigation is needed
+NO_IRRIGATION_TEMP = 15
+        
+# Define the maximum number of consecutive days without irrigation
+SKIP_LIMIT = 1
 
 TOLERANCE = 300  # Define your tolerance in seconds
 
@@ -40,6 +46,9 @@ class intelligent_irrigation_scheduling(hass.Hass):
         # Schedule the background safety check
         self.background_task = self.create_task(self.periodic_check())
         
+        # Initialize a counter for skipped days
+        skipped_days = 0
+        
         self.watering_cycle_in_progress = False
         
         self.log("Initialization complete")
@@ -47,7 +56,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
     async def periodic_check(self):
         while True:
             try:
-                await asyncio.sleep(60)  # Wait for 60 seconds
+                await asyncio.sleep(60)  # Wait for 300 seconds
                 current_time = datetime.datetime.now().time()
                 
                 # Await the get_state call
@@ -116,20 +125,42 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         # Calculate the scale factors for cycles and water
         WATER_SCALE = (WATER_MAX - WATER_MIN) / (TEMP_MAX - TEMP_MIN)  # Adjusted for WATER_MIN..WATER_MAX daily need
-
+        
         # Adjusted linear relationship for daily water need based on temperature
-        if TEMP_MIN <= greenhouse_daily_mean_temperature <= TEMP_MAX:
+        if greenhouse_daily_mean_temperature <= NO_IRRIGATION_TEMP:
+            if skipped_days < SKIP_LIMIT:
+                daily_water_need = 0
+                skipped_days += 1
+            else:
+                daily_water_need = WATER_MIN
+                skipped_days = 0
+        elif TEMP_MIN <= greenhouse_daily_mean_temperature <= TEMP_MAX:
             daily_water_need = ((greenhouse_daily_mean_temperature - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * (WATER_MAX - WATER_MIN) + WATER_MIN
+            skipped_days = 0
         elif greenhouse_daily_mean_temperature < TEMP_MIN:
             daily_water_need = WATER_MIN
+            skipped_days = 0
         else:
             daily_water_need = WATER_MAX
+            skipped_days = 0
 
+        # Fetch today's irrigation data
+        try:
+            cycles_today, total_on_time_today, total_liters_irrigated_today = self.get_today_irrigation_data()
+        except ValueError as e:
+            self.log(f"Error parsing today's irrigation data: {e}")
+        
+        # Calculate the remaining water need for today
+        remaining_water_need = max(0, daily_water_need - total_liters_irrigated_today)
+        
         # Fetch yesterday's irrigation data
-        yesterday_cycles, yesterday_liters = self.get_yesterday_irrigation_data()
+        try:
+            cycles_yesterday, total_on_time_yesterday, total_liters_irrigated_yesterday = self.get_yesterday_irrigation_data()
+        except ValueError as e:
+            self.log(f"Error parsing yesterday's irrigation data: {e}")
 
         # Calculate the deviation between yesterday's liters irrigated and the calculated daily water need
-        deviation = yesterday_liters - daily_water_need
+        deviation = total_liters_irrigated_yesterday - daily_water_need
 
         # Define a reduction factor based on the deviation
         reduction_factor = 1.0 - (deviation / daily_water_need)
@@ -142,12 +173,12 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
         # Calculate the number of cycles and water per cycle
         num_cycles = 1
-        water_per_cycle = daily_water_need
+        water_per_cycle = remaining_water_need
 
         # If the water per cycle exceeds MAX_WATER_PER_CYCLE, increase the number of cycles (up to a maximum of three)
         while water_per_cycle > MAX_WATER_PER_CYCLE and num_cycles < 3:
             num_cycles += 1
-            water_per_cycle = daily_water_need / num_cycles
+            water_per_cycle = remaining_water_need / num_cycles
 
         # Round the water per cycle to two decimal places
         water_per_cycle = round(water_per_cycle, 2)
@@ -183,9 +214,9 @@ class intelligent_irrigation_scheduling(hass.Hass):
             return False
         
         # Initialize variables to track cycles, on-time, and total liters irrigated
-        cycles = 0
-        total_on_time = datetime.timedelta()
-        total_liters_irrigated = 0
+        cycles_yesterday = 0
+        total_on_time_yesterday = datetime.timedelta()
+        total_liters_irrigated_yesterday = 0
         irrigation_start_time = None
 
         # Helper function to parse datetime
@@ -211,21 +242,21 @@ class intelligent_irrigation_scheduling(hass.Hass):
                 # If the current state is 'off' and the irrigation system was on, calculate the on-time and reset the start time
                 elif current_state == 'off' and irrigation_start_time is not None:
                     on_time = current_time - irrigation_start_time
-                    total_on_time += on_time
+                    total_on_time_yesterday += on_time
                     self.log(f"Irrigation started at {irrigation_start_time.strftime('%H:%M:%S')} and ended at {current_time.strftime('%H:%M:%S')}, duration: {on_time}")
-                    total_liters_irrigated += on_time.total_seconds() / 3600 * WATER_OUTPUT_RATE
-                    cycles += 1
+                    total_liters_irrigated_yesterday += on_time.total_seconds() / 3600 * WATER_OUTPUT_RATE
+                    cycles_yesterday += 1
                     irrigation_start_time = None
             else:
                 self.log("State information or last changed time not found in history data.")
 
         # Log the calculated metrics
-        self.log(f"Total cycles yesterday: {cycles}")
-        self.log(f"Total on-time yesterday: {total_on_time}")
-        self.log(f"Total liters irrigated yesterday: {total_liters_irrigated}")
+        self.log(f"Total cycles yesterday: {cycles_yesterday}")
+        self.log(f"Total on-time yesterday: {total_on_time_yesterday}")
+        self.log(f"Total liters irrigated yesterday: {total_liters_irrigated_yesterday}")
 
         
-        return cycles, total_liters_irrigated
+        return cycles_yesterday, total_on_time_yesterday, total_liters_irrigated_yesterday
 
 
     def get_today_irrigation_data(self):
@@ -261,9 +292,9 @@ class intelligent_irrigation_scheduling(hass.Hass):
             return 0, datetime.timedelta(), 0
 
         # Initialize variables to track cycles, on-time, and total liters irrigated
-        cycles = 0
-        total_on_time = datetime.timedelta()
-        total_liters_irrigated = 0
+        cycles_today = 0
+        total_on_time_today = datetime.timedelta()
+        total_liters_irrigated_today = 0
         irrigation_start_time = None
 
         # Helper function to parse datetime and convert to local timezone
@@ -290,21 +321,20 @@ class intelligent_irrigation_scheduling(hass.Hass):
                 # If the current state is 'off' and the irrigation system was on, calculate the on-time and reset the start time
                 elif current_state == 'off' and irrigation_start_time is not None:
                     on_time = current_time - irrigation_start_time
-                    total_on_time += on_time
+                    total_on_time_today += on_time
                     self.log(f"Irrigation started at {irrigation_start_time.strftime('%H:%M:%S')} and ended at {current_time.strftime('%H:%M:%S')}, duration: {on_time}")
-                    total_liters_irrigated += on_time.total_seconds() / 3600 * self.WATER_OUTPUT_RATE
-                    cycles += 1
+                    total_liters_irrigated_today += on_time.total_seconds() / 3600 * self.WATER_OUTPUT_RATE
+                    cycles_today += 1
                     irrigation_start_time = None
             else:
                 self.log("State information or last changed time not found in history data.")
 
         # Log the calculated metrics
-        self.log(f"Total cycles today: {cycles}")
-        self.log(f"Total on-time today: {total_on_time}")
-        self.log(f"Total liters irrigated today: {total_liters_irrigated}")
+        self.log(f"Total cycles today: {cycles_today}")
+        self.log(f"Total on-time today: {total_on_time_today}")
+        self.log(f"Total liters irrigated today: {total_liters_irrigated_today}")
 
-        return cycles, total_on_time, total_liters_irrigated
-
+        return cycles_today, total_on_time_today, total_liters_irrigated_today
 
    
     def schedule_watering_cycles(self):
