@@ -31,7 +31,7 @@ class intelligent_irrigation_forecasting(hass.Hass):
             self.model = LinearRegression()  # Create the model object here
             self.log("LinearRegression model created")
             
-            self.get_forecast_data()  # Run the forecast function initially
+            self.get_forecast_data({}) # Run the forecast function initially
             
             # Schedule get_forecast_data to run daily at 04:00
             runtime = time(4, 0, 0)  # Use time from datetime module
@@ -642,7 +642,7 @@ class intelligent_irrigation_forecasting(hass.Hass):
     
         return forecast_data
     
-    def get_forecast_data(self):
+    def get_forecast_data(self, kwargs):
         self.log(f"Entered {inspect.currentframe().f_code.co_name}")
 
         # Fetch the latitude and longitude of the home zone
