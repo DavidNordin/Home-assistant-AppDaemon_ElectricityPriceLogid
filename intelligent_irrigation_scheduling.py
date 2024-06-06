@@ -32,6 +32,8 @@ class intelligent_irrigation_scheduling(hass.Hass):
     def initialize(self):
         self.log("Initializing Intelligent Irrigation Scheduler")
         self.WATER_OUTPUT_RATE = WATER_OUTPUT_RATE
+        # Initialize skipped_days attribute
+        self.skipped_days = 0
         
         # Schedule daily tasks
         #self.run_daily(self.schedule_irrigation, "04:00:00")
@@ -45,10 +47,7 @@ class intelligent_irrigation_scheduling(hass.Hass):
         
         # Schedule the background safety check
         self.background_task = self.create_task(self.periodic_check())
-        
-        # Initialize a counter for skipped days
-        skipped_days = 0
-        
+               
         self.watering_cycle_in_progress = False
         
         self.log("Initialization complete")
@@ -122,28 +121,28 @@ class intelligent_irrigation_scheduling(hass.Hass):
 
     def determine_irrigation_parameters(self, greenhouse_daily_mean_temperature):
         self.log("Entered determine_irrigation_parameters")
-
+    
         # Calculate the scale factors for cycles and water
         WATER_SCALE = (WATER_MAX - WATER_MIN) / (TEMP_MAX - TEMP_MIN)  # Adjusted for WATER_MIN..WATER_MAX daily need
         
         # Adjusted linear relationship for daily water need based on temperature
         if greenhouse_daily_mean_temperature <= NO_IRRIGATION_TEMP:
-            if skipped_days < SKIP_LIMIT:
+            if self.skipped_days < SKIP_LIMIT:
                 daily_water_need = 0
-                skipped_days += 1
+                self.skipped_days += 1
             else:
                 daily_water_need = WATER_MIN
-                skipped_days = 0
+                self.skipped_days = 0
         elif TEMP_MIN <= greenhouse_daily_mean_temperature <= TEMP_MAX:
             daily_water_need = ((greenhouse_daily_mean_temperature - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * (WATER_MAX - WATER_MIN) + WATER_MIN
-            skipped_days = 0
+            self.skipped_days = 0
         elif greenhouse_daily_mean_temperature < TEMP_MIN:
             daily_water_need = WATER_MIN
-            skipped_days = 0
+            self.skipped_days = 0
         else:
             daily_water_need = WATER_MAX
-            skipped_days = 0
-
+            self.skipped_days = 0
+    
         # Fetch today's irrigation data
         try:
             cycles_today, total_on_time_today, total_liters_irrigated_today = self.get_today_irrigation_data()
@@ -158,36 +157,38 @@ class intelligent_irrigation_scheduling(hass.Hass):
             cycles_yesterday, total_on_time_yesterday, total_liters_irrigated_yesterday = self.get_yesterday_irrigation_data()
         except ValueError as e:
             self.log(f"Error parsing yesterday's irrigation data: {e}")
-
+    
         # Calculate the deviation between yesterday's liters irrigated and the calculated daily water need
         deviation = total_liters_irrigated_yesterday - daily_water_need
-
+    
         # Define a reduction factor based on the deviation
-        reduction_factor = 1.0 - (deviation / daily_water_need)
-
+        if daily_water_need != 0:
+            reduction_factor = 1.0 - (deviation / daily_water_need)
+        else:
+            reduction_factor = 1.0  # or any other value you consider appropriate
+    
         # Ensure the reduction factor is within a reasonable range (e.g., between 0 and 1.0)
         reduction_factor = max(0, min(1.0, reduction_factor))
-
+    
         # Apply the reduction factor to adjust today's daily water need
         daily_water_need *= reduction_factor
-
+    
         # Calculate the number of cycles and water per cycle
         num_cycles = 1
         water_per_cycle = remaining_water_need
-
+    
         # If the water per cycle exceeds MAX_WATER_PER_CYCLE, increase the number of cycles (up to a maximum of three)
         while water_per_cycle > MAX_WATER_PER_CYCLE and num_cycles < 3:
             num_cycles += 1
             water_per_cycle = remaining_water_need / num_cycles
-
+    
         # Round the water per cycle to two decimal places
         water_per_cycle = round(water_per_cycle, 2)
-
+    
         self.log(f"Temperature is {greenhouse_daily_mean_temperature}°C, calculated {num_cycles} cycles and {water_per_cycle}L water per cycle")
-
+    
         self.num_cycles = num_cycles
         self.water_per_cycle = water_per_cycle
-
 
     def get_yesterday_irrigation_data(self):
         self.log("Checking if irrigation occurred yesterday")
