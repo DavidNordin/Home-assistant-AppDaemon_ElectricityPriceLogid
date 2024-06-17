@@ -7,9 +7,9 @@ TIMEZONE = 'Europe/Stockholm'
 local_tz = pytz.timezone(TIMEZONE)
 
 # Define the minimum and maximum values for temperature, cycles, and water
-TEMP_MIN, TEMP_MAX = 10, 30
+TEMP_MIN, TEMP_MAX = 5, 30
 CYCLES_MIN, CYCLES_MAX = 0, 3
-WATER_MIN, WATER_MAX = 0, 1  # Adjusted for 1..5L daily need
+WATER_MIN, WATER_MAX = 0, 2  # Adjusted for 1..5L daily need
 MAX_WATER_PER_CYCLE = 1.5  # Maximum permitted water per cycle in liters
 
 # Define the temperature below which no irrigation is needed
@@ -17,6 +17,8 @@ NO_IRRIGATION_TEMP = 15
         
 # Define the maximum number of consecutive days without irrigation
 SKIP_LIMIT = 1
+
+MINIMUM_DURATION = 1  # Minimum duration in minutes
 
 TOLERANCE = 300  # Define your tolerance in seconds
 
@@ -396,6 +398,20 @@ class intelligent_irrigation_scheduling(hass.Hass):
     async def execute_watering_cycle(self, kwargs):
         if self.watering_cycle_in_progress:
             self.log("A watering cycle is already in progress. Exiting.")
+            return
+    
+        # Convert 'HH:MM:SS' to minutes
+        def convert_to_minutes(time_str):
+            t = datetime.datetime.strptime(time_str, "%H:%M:%S")
+            return t.hour*60 + t.minute + t.second/60
+
+        # Calculate duration_per_cycle
+        duration_per_cycle = str(datetime.timedelta(hours=self.water_per_cycle / WATER_OUTPUT_RATE))
+
+        # Check if the scheduled duration is too short
+        duration_in_minutes = convert_to_minutes(duration_per_cycle)
+        if duration_in_minutes < MINIMUM_DURATION:
+            self.log("Scheduled duration is too short. Exiting.")
             return
 
         self.watering_cycle_in_progress = True

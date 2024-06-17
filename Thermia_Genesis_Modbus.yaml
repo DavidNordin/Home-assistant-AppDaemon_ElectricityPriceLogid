@@ -1,0 +1,730 @@
+# Thermia_Atlas_Modbus.yaml
+# This is a configuration file for the Home Assistant Modbus integration for Thermia Altas, Calibra, Calibra Eco, Calibra Cool and Diplomat pumps.
+# Based on Genesis platorm version 16.00
+
+# Scale
+# 1 No conversion factor
+# 10 Conversion factor 10, i.e. the transmitted value is a tenfold larger
+# 100 Conversion factor 100, i.e. the transmitted value is a tenfold larger
+
+# Negative numbers
+# Negative numbers are represented by the upper half of each 16 bit register.
+# 100 = 100
+# ...
+# 2 = 2
+# 1 = 1
+# 0 = 0
+# -1 = 65535
+# -2 = 65534
+# -3 = 65533
+# ...
+# -100 = 65436
+# etc.
+
+modbus:
+  - name: "thermia_atlas"
+    type: tcp
+    host: 192.168.1.10   # Replace with your heat pump's IP address
+    port: 502
+    delay: 5
+    timeout: 5
+
+sensor:
+  - platform: modbus
+    scan_interval: 10
+    registers:
+      - name: "Operational Mode"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40001
+        register_type: holding
+      - name: "Max Limitation, Set Point Curve Radiator"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40004
+        register_type: holding
+        scale: 0.01
+      - name: "Min Limitation, Set Point Curve Radiator"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40005
+        register_type: holding
+        scale: 0.01
+      - name: "Comfort Wheel Setting"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40006
+        register_type: holding
+        scale: 0.01
+      - name: "Set Point Heat Curve, Y-coordinate 1"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40007
+        register_type: holding
+        scale: 0.01
+      - name: "Heating Season Stop Temperature"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40017
+        register_type: holding
+        scale: 0.01
+      - name: "Start Temperature Tap Water"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40023
+        register_type: holding
+        scale: 0.01
+      - name: "Stop Temperature Tap Water"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40024
+        register_type: holding
+        scale: 0.01
+      - name: "Minimum Allowed Gear in Heating"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40027
+        register_type: holding
+      - name: "Maximum Allowed Gear in Heating"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40028
+        register_type: holding
+      - name: "Maximum Allowed Gear in Tap Water"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40029
+        register_type: holding
+      - name: "Minimum Allowed Gear in Tap Water"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40030
+        register_type: holding
+      - name: "Cooling Mix Valve Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40031
+        register_type: holding
+        scale: 0.01
+      - name: "Cooling Supply Line Mix Valve: Lowest Allowed Opening Degree"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40050
+        register_type: holding
+        scale: 0.01
+      - name: "Cooling Supply Line Mix Valve: Highest Allowed Opening Degree"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40051
+        register_type: holding
+        scale: 0.01
+      - name: "Pool Charge Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40059
+        register_type: holding
+        scale: 0.01
+      - name: "Gear Shift Delay Heating"
+        hub: thermia_atlas
+        unit_of_measurement: "min"
+        slave: 1
+        register: 40062
+        register_type: holding
+      - name: "Gear Shift Delay Pool"
+        hub: thermia_atlas
+        unit_of_measurement: "min"
+        slave: 1
+        register: 40063
+        register_type: holding
+      - name: "Gear Shift Delay Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "min"
+        slave: 1
+        register: 40064
+        register_type: holding
+      - name: "Brine In High Alarm Limit"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40068
+        register_type: holding
+        scale: 0.01
+      - name: "Brine In Low Alarm Limit"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40069
+        register_type: holding
+        scale: 0.01
+      - name: "Brine Out Low Alarm Limit"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40070
+        register_type: holding
+        scale: 0.01
+      - name: "Brine Max Delta Limit"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 40071
+        register_type: holding
+        scale: 0.01
+      - name: "External Additional Heater Start (PID sum)"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40076
+        register_type: holding
+      - name: "Condenser Pump Lowest Allowed Speed"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40077
+        register_type: holding
+        scale: 0.01
+      - name: "Brine Pump Lowest Allowed Speed"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40078
+        register_type: holding
+        scale: 0.01
+      - name: "External Additional Heater Stop (PID sum)"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40079
+        register_type: holding
+      - name: "Condenser Pump Highest Allowed Speed"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40080
+        register_type: holding
+        scale: 0.01
+      - name: "Brine Pump Highest Allowed Speed"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40081
+        register_type: holding
+        scale: 0.01
+      - name: "Condenser Pump Standby Speed"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40082
+        register_type: holding
+        scale: 0.01
+      - name: "Brine Pump Standby Speed"
+        hub: thermia_atlas
+        unit_of_measurement: "%"
+        slave: 1
+        register: 40083
+        register_type: holding
+        scale: 0.01
+      - name: "Minimum Allowed Gear in Pool"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40086
+        register_type: holding
+      - name: "Maximum Allowed Gear in Pool"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40087
+        register_type: holding
+      - name: "Minimum Allowed Gear in Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40088
+        register_type: holding
+      - name: "Maximum Allowed Gear in Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40089
+        register_type: holding
+      - name: "Start Temp for Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40106
+        register_type: holding
+        scale: 0.01
+      - name: "Stop Temp for Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40107
+        register_type: holding
+        scale: 0.01
+      - name: "Max Temp for Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40108
+        register_type: holding
+        scale: 0.01
+      - name: "Compensation by Outside Temp Heating"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40111
+        register_type: holding
+      - name: "Compensation by Outside Temp Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 40112
+        register_type: holding
+      - name: "Brine In Low Alarm Limit (during cooling)"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40116
+        register_type: holding
+        scale: 0.01
+      - name: "Cooling Target Temp"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40117
+        register_type: holding
+        scale: 0.01
+      - name: "Cooling Control Dead Band"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 40118
+        register_type: holding
+        scale: 0.01
+      - name: "Minimum Run Time"
+        hub: thermia_atlas
+        unit_of_measurement: "min"
+        slave: 1
+        register: 40120
+        register_type: holding
+      - name: "Minimum Stop Time"
+        hub: thermia_atlas
+        unit_of_measurement: "min"
+        slave: 1
+        register: 40121
+        register_type: holding
+      - name: "Active Operating Mode"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41001
+        register_type: input
+      - name: "Control System State"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41002
+        register_type: input
+      - name: "Compressor State"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41003
+        register_type: input
+      - name: "Heat Carrier Pump"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41004
+        register_type: input
+      - name: "Hot Water Charging Pump"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41005
+        register_type: input
+      - name: "Brine Pump"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41006
+        register_type: input
+      - name: "Three Way Valve State"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41007
+        register_type: input
+      - name: "Add Heat Control State"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 41008
+        register_type: input
+      - name: "Brine In"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41009
+        register_type: input
+        scale: 0.01
+      - name: "Brine Out"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41010
+        register_type: input
+        scale: 0.01
+      - name: "Heat Carrier In"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41011
+        register_type: input
+        scale: 0.01
+      - name: "Heat Carrier Out"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41012
+        register_type: input
+        scale: 0.01
+      - name: "Hot Water In"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41013
+        register_type: input
+        scale: 0.01
+      - name: "External Circulation In"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41014
+        register_type: input
+        scale: 0.01
+      - name: "Heating Supply Line Temperature"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41015
+        register_type: input
+        scale: 0.01
+      - name: "Cooling Supply Line Temperature"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41016
+        register_type: input
+        scale: 0.01
+      - name: "Heating Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41019
+        register_type: input
+        scale: 0.01
+      - name: "Tap Water Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41020
+        register_type: input
+        scale: 0.01
+      - name: "Cooling Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41021
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41022
+        register_type: input
+        scale: 0.01
+      - name: "Soft Outdoor Temperature"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41023
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature Filtered"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41024
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature For Heating"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41025
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature For Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41026
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature Compensated for Wind"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41027
+        register_type: input
+        scale: 0.01
+      - name: "Heating Curve Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41028
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature Change"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 41029
+        register_type: input
+        scale: 0.01
+      - name: "External Supply Line Temp"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41030
+        register_type: input
+        scale: 0.01
+      - name: "Hot Water Charge Temp"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41031
+        register_type: input
+        scale: 0.01
+      - name: "Hot Water Consumption Temp"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41032
+        register_type: input
+        scale: 0.01
+      - name: "Operation Time Total"
+        hub: thermia_atlas
+        unit_of_measurement: "h"
+        slave: 1
+        register: 41035
+        register_type: input
+        scale: 0.1
+      - name: "Operation Time Heating"
+        hub: thermia_atlas
+        unit_of_measurement: "h"
+        slave: 1
+        register: 41036
+        register_type: input
+        scale: 0.1
+      - name: "Operation Time Tap Water"
+        hub: thermia_atlas
+        unit_of_measurement: "h"
+        slave: 1
+        register: 41037
+        register_type: input
+        scale: 0.1
+      - name: "Operation Time Pool"
+        hub: thermia_atlas
+        unit_of_measurement: "h"
+        slave: 1
+        register: 41038
+        register_type: input
+        scale: 0.1
+      - name: "Operation Time Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "h"
+        slave: 1
+        register: 41039
+        register_type: input
+        scale: 0.1
+      - name: "Outdoor Temp 1 hour average"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41048
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temp 24 hours average"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41049
+        register_type: input
+        scale: 0.01
+      - name: "Hot Water 12h Consumption Temp"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 41052
+        register_type: input
+        scale: 0.01
+      - name: "Operating Mode"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42001
+        register_type: input
+      - name: "Season"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42002
+        register_type: input
+      - name: "Control System State"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42003
+        register_type: input
+      - name: "Compressor State"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42004
+        register_type: input
+      - name: "Heating Operation"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42005
+        register_type: input
+      - name: "Tap Water Operation"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42006
+        register_type: input
+      - name: "Heating Set Point Deviation"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 42007
+        register_type: input
+        scale: 0.01
+      - name: "Cooling Operation"
+        hub: thermia_atlas
+        unit_of_measurement: ""
+        slave: 1
+        register: 42008
+        register_type: input
+      - name: "Tap Water Set Point Deviation"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 42009
+        register_type: input
+        scale: 0.01
+      - name: "Cooling Set Point Deviation"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 42010
+        register_type: input
+        scale: 0.01
+      - name: "Heating Diff"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 42012
+        register_type: input
+        scale: 0.01
+      - name: "Cooling Diff"
+        hub: thermia_atlas
+        unit_of_measurement: "K"
+        slave: 1
+        register: 42013
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature For Heating"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42014
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature For Cooling"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42015
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temperature Compensated for Wind"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42016
+        register_type: input
+        scale: 0.01
+      - name: "Active Heating Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42018
+        register_type: input
+        scale: 0.01
+      - name: "Active Tap Water Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42019
+        register_type: input
+        scale: 0.01
+      - name: "Active Cooling Set Point"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42020
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temp 1 hour average"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42022
+        register_type: input
+        scale: 0.01
+      - name: "Outdoor Temp 24 hours average"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42023
+        register_type: input
+        scale: 0.01
+      - name: "Hot Water 12h Consumption Temp"
+        hub: thermia_atlas
+        unit_of_measurement: "°C"
+        slave: 1
+        register: 42026
+        register_type: input
+        scale: 0.01
